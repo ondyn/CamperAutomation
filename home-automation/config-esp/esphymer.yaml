@@ -1,0 +1,177 @@
+esphome:
+  name: esphymer
+  friendly_name: EspHymer
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+  level: NONE
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "DxJyuDSu+sOFMlQPB3AWx5LpFdiWzI3yYjBDqvoFG9M="
+
+ota:
+  - platform: esphome
+    password: "10236afba501b09b62344e028f7df0c0"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Esphymer Fallback Hotspot"
+    password: "TOBmzO9x9xAt"
+
+captive_portal:
+
+i2c:
+  sda: GPIO21
+  scl: GPIO22
+  scan: true
+  id: bus_a
+
+one_wire:
+  - platform: gpio
+    pin: GPIO23
+    id: bus_b
+
+switch:
+  - platform: template
+    name: Parking
+    id: switch1
+    optimistic: true
+    lambda: return id(switch1).state;
+
+binary_sensor:
+  - platform: gpio
+    pin: GPIO19
+    name: "PIR Sensor"
+    device_class: motion
+
+sensor:
+  - platform: dallas_temp
+    one_wire_id: bus_b
+    address: 0x8b3c01f095401e28
+    name: "T1"
+    unit_of_measurement: "°C"
+
+  - platform: dallas_temp
+    one_wire_id: bus_b
+    address: 0xa83c01f095b01928
+    name: "T2"
+    unit_of_measurement: "°C"
+
+  - platform: dallas_temp
+    one_wire_id: bus_b
+    address: 0xdb3c01f0952a3328
+    name: "T3"
+    unit_of_measurement: "°C"
+
+  - platform: mpu6050
+    address: 0x68
+    i2c_id: bus_a
+    accel_x:
+      id: accel_x
+      name: "MPU6050 Accel X"
+      filters:
+       - sliding_window_moving_average:
+          window_size: 10
+          send_every: 5
+       - offset: 1.0
+    accel_y:
+      id: accel_y
+      name: "MPU6050 Accel Y"
+      filters:
+       - sliding_window_moving_average:
+          window_size: 10
+          send_every: 5
+       - offset: -6.4
+    accel_z:
+      id: accel_z
+      name: "MPU6050 Accel z"
+      filters:
+       - sliding_window_moving_average:
+          window_size: 10
+          send_every: 5
+       - offset: -7.4
+    gyro_x:
+      name: "MPU6050 Gyro X"
+      id: gyro_x
+      filters:
+       - sliding_window_moving_average:
+          window_size: 10
+          send_every: 5
+    gyro_y:
+      name: "MPU6050 Gyro Y"
+      id: gyro_y
+      filters:
+       - sliding_window_moving_average:
+          window_size: 10
+          send_every: 5
+    gyro_z:
+      name: "MPU6050 Gyro z"
+      id: gyro_z
+      filters:
+       - sliding_window_moving_average:
+          window_size: 10
+          send_every: 5
+    temperature:
+      name: "MPU6050 Temperature"
+      filters:
+       - sliding_window_moving_average:
+          window_size: 10
+          send_every: 10
+    update_interval: 2s
+    id: accel
+
+  - platform: template
+    id: roll
+    name: roll
+    accuracy_decimals: 3
+    lambda: |-
+      return  (atan( id(accel_y).state / sqrt( pow( id(accel_x).state , 2) + pow( id(accel_z).state , 2) ) ) * 180 / PI) ;
+    update_interval: 200ms
+    unit_of_measurement: "°"
+
+  - platform: template
+    id: pitch
+    name: pitch
+    accuracy_decimals: 3
+    lambda: |-
+      return  (atan(-1 * id(accel_x).state / sqrt(pow(id(accel_y).state, 2) + pow(id(accel_z).state, 2))) * 180 / PI);
+    update_interval: 200ms
+    unit_of_measurement: "°"
+
+  - platform: template
+    id: angleX
+    name: angleX
+    accuracy_decimals: 3
+    lambda: |-
+      return  (asin(id(accel_x).state / 9.81) * 180 / PI) * -1;
+    update_interval: 200ms
+    unit_of_measurement: "°"
+
+  - platform: template
+    id: angleY
+    name: angleY
+    accuracy_decimals: 3
+    lambda: |-
+      return  (asin(id(accel_y).state / 9.81) * 180 / PI) * -1;
+    update_interval: 200ms
+    unit_of_measurement: "°"
+
+interval:
+  - interval: 200ms
+    then:
+      - if:
+          condition:
+            - switch.is_on: switch1
+          then:
+            - component.update: accel

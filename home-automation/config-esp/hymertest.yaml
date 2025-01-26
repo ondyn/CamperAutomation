@@ -1,0 +1,48 @@
+esphome:
+  name: hymertest
+  friendly_name: HymerTest
+  compile_process_limit: 1
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "LibBwwCWU9Vu06ar8B/Gxur7BviehFqA6KjkPK+C49Y="
+
+ota:
+  - platform: esphome
+    password: "a0e2ffd0b488582e949e1da547ced4fd"
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Hymertest Fallback Hotspot"
+    password: "148t0UNwiBCW"
+
+captive_portal:
+
+i2c:
+  sda: GPIO21
+  scl: GPIO22
+  scan: true
+
+sensor:
+  - platform: bme280_i2c
+    address: 0x76
+    temperature:
+      name: "BME280 Temperature"
+    pressure:
+      name: "BME280 Pressure"
+    humidity:
+      name: "BME280 Humidity"
+    
