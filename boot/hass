@@ -1,0 +1,5 @@
+#!/data/data/com.termux/files/usr/bin/sh
+termux-wake-lock
+echo "Termux boot hass: starting Hass script in screen..."
+screen -dmS hass sh /data/data/com.termux/files/home/scripts/hass.sh
+echo "Termux boot hass: Done"

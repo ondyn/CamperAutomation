@@ -1,0 +1,25 @@
+services:
+  # homeassistant:
+  #   image: homeassistant/home-assistant
+  #   volumes:
+  #     - ./config-ha:/config:rw
+  #     # - /etc/localtime:/etc/localtime:ro
+  #   restart: unless-stopped
+  #   environment:
+  #     - TZ=Europe/Prague
+  #   ports:
+  #     - "8888:8123"
+  esphome:
+    # image: ghcr.io/esphome/esphome:2025.6.3
+    image: ghcr.io/esphome/esphome:2024.12.0
+    volumes:
+      - ./config-esp:/config:rw
+      # - ./config-esp/hymertest.yaml:/config/hymertest.yaml:rw
+      # - ./config-esp/secrets.yaml:/config/secrets.yaml:rw
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - ESPHOME_VERBOSE=false
+    ports:
+      - "8889:6052"
+    # privileged: true
+    # network_mode: host

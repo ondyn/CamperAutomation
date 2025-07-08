@@ -3,22 +3,23 @@ esphome:
   friendly_name: EspHymer
 
 esp32:
-  board: esp32dev
+  board: esp32-c3-devkitm-1
+
   framework:
     type: arduino
 
 # Enable logging
 logger:
-  level: NONE
+  level: INFO
 
 # Enable Home Assistant API
 api:
   encryption:
-    key: "DxJyuDSu+sOFMlQPB3AWx5LpFdiWzI3yYjBDqvoFG9M="
+    key: "g7Md1bzfJrRLDf3NdJpODAljdNggVf3OIzD0/pp58cE="
 
 ota:
   - platform: esphome
-    password: "10236afba501b09b62344e028f7df0c0"
+    password: !secret ota_pwd
 
 wifi:
   ssid: !secret wifi_ssid
@@ -27,19 +28,34 @@ wifi:
   # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
     ssid: "Esphymer Fallback Hotspot"
-    password: "TOBmzO9x9xAt"
+    password: !secret ap_pwd
 
 captive_portal:
 
+
+external_components:
+  - source: github://Fabian-Schmidt/esphome-truma_inetbox
+    components: ["truma_inetbox"]
+
+uart:
+  - id: lin_uart_bus
+    tx_pin: GPIO21
+    rx_pin: GPIO20
+    baud_rate: 9600
+    stop_bits: 2
+
+truma_inetbox:
+  uart_id: lin_uart_bus
+
 i2c:
-  sda: GPIO21
-  scl: GPIO22
+  sda: GPIO8
+  scl: GPIO9
   scan: true
   id: bus_a
 
 one_wire:
   - platform: gpio
-    pin: GPIO23
+    pin: GPIO10
     id: bus_b
 
 switch:
@@ -49,13 +65,45 @@ switch:
     optimistic: true
     lambda: return id(switch1).state;
 
+  - platform: gpio
+    pin: GPIO6
+    name: "Phone Charger"
+    inverted: true
+
 binary_sensor:
   - platform: gpio
-    pin: GPIO19
+    pin: GPIO7
     name: "PIR Sensor"
     device_class: motion
 
+  - platform: truma_inetbox
+    name: "CP Plus alive"
+    type: CP_PLUS_CONNECTED
+
 sensor:
+  - platform: truma_inetbox
+    name: "Current Room Temperature"
+    type: CURRENT_ROOM_TEMPERATURE
+  - platform: truma_inetbox
+    name: "Current Water Temperature"
+    type: CURRENT_WATER_TEMPERATURE
+  - platform: truma_inetbox
+    name: "Target Room Temperature"
+    type: TARGET_ROOM_TEMPERATURE
+  - platform: truma_inetbox
+    name: "Target Water Temperature"
+    type: TARGET_WATER_TEMPERATURE
+
+  - platform: bme280_i2c
+    i2c_id: bus_a
+    address: 0x76
+    temperature:
+      name: "BME280 Temperature"
+    pressure:
+      name: "BME280 Pressure"
+    humidity:
+      name: "BME280 Humidity"
+
   - platform: dallas_temp
     one_wire_id: bus_b
     address: 0x8b3c01f095401e28
