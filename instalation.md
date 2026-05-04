@@ -294,7 +294,7 @@ On phone (SSH):
 ```sh
 screen -dmS hass sh ~/scripts/hass.sh
 screen -ls
-tail -n 100 ~/.suroot/.homeassistant/home-assistant.log
+tail -n 100 ~/.homeassistant/home-assistant.log
 tail -n 100 ~/logs/bootstrap.log
 ```
 
@@ -330,7 +330,79 @@ Security benefits:
 
 ---
 
-## 9) File/folder structure for provisioning assets
+## 9) Tailscale VPN setup
+
+Tailscale provides a stable, encrypted tunnel so the Home Assistant Companion app can reach the van from any network.
+
+### 9a) Create a Tailscale account and auth key
+
+1. Sign up at <https://login.tailscale.com>.
+2. Go to **Settings → Keys** → **Generate auth key**.
+3. Recommended: enable **Reusable** and set an expiry. Copy the `TSKEY-...` value.
+
+### 9b) Install Tailscale and connect the phone
+
+With a pre-auth key (non-interactive, recommended for automation):
+
+```sh
+cd /Users/ondrejhnyk/Documents/CamperAutomation
+PHONE_HOST=<PHONE_IP> PHONE_USER=<TERMUX_USER> \
+  ./provisioning/ssh/40_setup_tailscale.sh --authkey TSKEY-xxx-...
+```
+
+Or without an auth key (browser login):
+
+```sh
+cd /Users/ondrejhnyk/Documents/CamperAutomation
+PHONE_HOST=<PHONE_IP> PHONE_USER=<TERMUX_USER> \
+  ./provisioning/ssh/40_setup_tailscale.sh
+```
+
+The script will print an auth URL — open it in a browser to complete login.
+
+What the script does:
+
+- Detects phone CPU architecture (`aarch64` → arm64, etc.)
+- Downloads the latest Tailscale stable tarball from `pkgs.tailscale.com/stable/`
+- Installs `tailscale` and `tailscaled` binaries to `~/vpn/` (expected by `bootstrap_services.sh`)
+- Creates Tailscale state and socket directories
+- Starts `tailscaled` with `userspace-networking` (required on Android — no TUN kernel module needed)
+- Authenticates and prints the assigned Tailscale IP
+
+### 9c) Verify connection
+
+On phone (SSH):
+
+```sh
+~/vpn/tailscale --socket $PREFIX/var/run/tailscale/tailscaled.sock status
+~/vpn/tailscale --socket $PREFIX/var/run/tailscale/tailscaled.sock ip -4
+```
+
+From laptop (after joining the same Tailscale network):
+
+```sh
+curl -s http://<TAILSCALE_IP>:8123
+```
+
+Expected signal:
+
+- `tailscale status` lists the phone as a connected peer.
+- Home Assistant Companion can reach `http://<TAILSCALE_IP>:8123` from outside the van hotspot.
+
+### 9d) Boot autostart
+
+`bootstrap_services.sh` already includes `start_vpn()` which starts `tailscaled` on every boot.
+No additional configuration is needed — the binaries being present at `~/vpn/` is sufficient.
+
+To verify after reboot:
+
+```sh
+ssh -p 8022 <TERMUX_USER>@<PHONE_IP> 'grep VPN ~/logs/bootstrap.log | tail -5'
+```
+
+---
+
+## 10) File/folder structure for provisioning assets
 
 ```text
 provisioning/
@@ -354,6 +426,7 @@ provisioning/
     10_install_homeassistant_core.sh
     20_post_install_checks.sh
     30_harden_ssh_key_auth.sh
+    40_setup_tailscale.sh
   termux/
     bootstrap_termux.sh
 ```

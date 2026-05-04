@@ -41,15 +41,32 @@ start_vpn() {
     return
   fi
 
-  if pgrep -f "tailscaled.*userspace-networking" >/dev/null 2>&1; then
+  # tailscaled needs CAP_NET_ADMIN to read the kernel routing table (netlinkrib).
+  # On Android/Termux this permission is denied unless we run as root via Magisk su.
+  VPN_HAS_ROOT=0
+  if command_exists su && su -c 'true' >/dev/null 2>&1; then
+    VPN_HAS_ROOT=1
+    log "VPN: root (su) available"
+  fi
+
+  if pgrep -x tailscaled >/dev/null 2>&1; then
     log "VPN: tailscaled is already running"
   else
-    log "VPN: starting tailscaled"
-    nohup "${TAILSCALED_BIN}" -tun userspace-networking --state="${TAILSCALE_STATE}" -socket "${TAILSCALE_SOCKET}" >>"${LOG_FILE}" 2>&1 &
+    log "VPN: starting tailscaled (root=${VPN_HAS_ROOT})"
+    mkdir -p "${LOG_DIR}"
+    if [ "${VPN_HAS_ROOT}" = "1" ]; then
+      su -c "nohup ${TAILSCALED_BIN} -tun userspace-networking --state=${TAILSCALE_STATE} -socket ${TAILSCALE_SOCKET} >> ${LOG_FILE} 2>&1 &"
+    else
+      nohup "${TAILSCALED_BIN}" -tun userspace-networking --state="${TAILSCALE_STATE}" -socket "${TAILSCALE_SOCKET}" >>"${LOG_FILE}" 2>&1 &
+    fi
   fi
 
   if wait_for_tailscale_socket; then
     log "VPN: tailscaled socket is ready"
+    # Make socket world-rw so Termux user can run tailscale CLI without root.
+    if [ "${VPN_HAS_ROOT}" = "1" ]; then
+      su -c "chmod 666 ${TAILSCALE_SOCKET}" >/dev/null 2>&1 || true
+    fi
     if "${TAILSCALE_BIN}" --socket "${TAILSCALE_SOCKET}" status >/dev/null 2>&1; then
       log "VPN: tailscale status command succeeded"
     else
