@@ -9,6 +9,24 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SSH_PORT="${SSH_PORT:-8022}"
+LOCK_FILE="${HA_LOCK_FILE:-${ROOT_DIR}/provisioning/locks/homeassistant-2026.2.3.lock.env}"
+
+if [ ! -f "${LOCK_FILE}" ]; then
+  echo "ERROR: lock file not found at ${LOCK_FILE}" >&2
+  exit 1
+fi
+
+# shellcheck disable=SC1090
+source "${LOCK_FILE}"
+
+HA_VERSION="${HA_VERSION:-${LOCK_HA_VERSION}}"
+HA_SOURCE_URL="${HA_SOURCE_URL:-${LOCK_HA_SOURCE_URL}}"
+HA_SOURCE_SHA256="${HA_SOURCE_SHA256:-${LOCK_HA_SOURCE_SHA256}}"
+HA_SOURCE_DIR="${HA_SOURCE_DIR:-${LOCK_HA_SOURCE_DIR}}"
+HA_REQUIRES_PYTHON="${HA_REQUIRES_PYTHON:-${LOCK_HA_REQUIRES_PYTHON}}"
+HA_INSTALL_TOOL="${HA_INSTALL_TOOL:-${LOCK_HA_INSTALL_TOOL}}"
+LOCK_BASENAME="$(basename "${LOCK_FILE}")"
+PYTHON_FREEZE_FILE="${ROOT_DIR}/provisioning/locks/homeassistant-${HA_VERSION}.python-freeze.txt"
 
 auto_detect_phone_host_adb() {
   local host=""
@@ -105,9 +123,6 @@ fi
 : "${PHONE_HOST?Set PHONE_HOST to phone IP/hostname}"
 : "${PHONE_USER?Set PHONE_USER to Termux username, e.g. u0_a123}"
 
-HA_REPO_URL="${HA_REPO_URL:-https://github.com/ondyn/hass-core.git}"
-HA_REPO_BRANCH="${HA_REPO_BRANCH:-without-uv}"
-
 ensure_sshd_reachable
 
 SSH_OPTS=(
@@ -133,26 +148,157 @@ trap cleanup_ssh_mux EXIT
 echo "Establishing SSH session (password should be requested once)..."
 ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'true'
 
-ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'mkdir -p ~/scripts ~/logs ~/.termux/boot'
+ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'mkdir -p ~/scripts ~/logs ~/.termux/boot ~/.provisioning/locks'
 scp "${SCP_OPTS[@]}" "${ROOT_DIR}/boot/00-bootstrap" "${PHONE_USER}@${PHONE_HOST}:~/.termux/boot/00-bootstrap"
 scp "${SCP_OPTS[@]}" "${ROOT_DIR}/scripts/bootstrap_services.sh" "${PHONE_USER}@${PHONE_HOST}:~/scripts/bootstrap_services.sh"
 scp "${SCP_OPTS[@]}" "${ROOT_DIR}/scripts/hass.sh" "${PHONE_USER}@${PHONE_HOST}:~/scripts/hass.sh"
+scp "${SCP_OPTS[@]}" "${LOCK_FILE}" "${PHONE_USER}@${PHONE_HOST}:~/.provisioning/locks/${LOCK_BASENAME}"
+
+if [ -f "${PYTHON_FREEZE_FILE}" ]; then
+  scp "${SCP_OPTS[@]}" "${PYTHON_FREEZE_FILE}" "${PHONE_USER}@${PHONE_HOST}:~/.provisioning/locks/$(basename "${PYTHON_FREEZE_FILE}")"
+fi
 
 ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'chmod 700 ~/.termux/boot/00-bootstrap ~/scripts/bootstrap_services.sh ~/scripts/hass.sh'
 
-ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" "bash -lc '
+ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" "LOCK_BASENAME='${LOCK_BASENAME}' HA_INSTALL_TOOL_OVERRIDE='${HA_INSTALL_TOOL}' bash -s" <<'REMOTE_INSTALL'
 set -euo pipefail
 cd ~
-python3 -m venv .venv
-source .venv/bin/activate
-if [ ! -d hass-core ]; then
-  git clone -b ${HA_REPO_BRANCH} --single-branch ${HA_REPO_URL} hass-core
+
+LOCK_PATH="$HOME/.provisioning/locks/${LOCK_BASENAME:?}"
+if [ ! -f "$LOCK_PATH" ]; then
+  echo "ERROR: remote lock file missing at $LOCK_PATH" >&2
+  exit 1
 fi
-cd hass-core
-python -m script.translations develop --all
-pip install --upgrade pip wheel setuptools
-pip install .
-'"
+
+# shellcheck disable=SC1090
+source "$LOCK_PATH"
+
+HA_VERSION="${LOCK_HA_VERSION}"
+HA_SOURCE_URL="${LOCK_HA_SOURCE_URL}"
+HA_SOURCE_SHA256="${LOCK_HA_SOURCE_SHA256}"
+HA_SOURCE_DIR="${LOCK_HA_SOURCE_DIR}"
+HA_REQUIRES_PYTHON="${LOCK_HA_REQUIRES_PYTHON}"
+HA_INSTALL_TOOL="${HA_INSTALL_TOOL_OVERRIDE:-${LOCK_HA_INSTALL_TOOL}}"
+PYTHON_FREEZE_PATH="$HOME/.provisioning/locks/homeassistant-${HA_VERSION}.python-freeze.txt"
+ARCHIVE_DIR="$HOME/.cache/provisioning"
+ARCHIVE_PATH="$ARCHIVE_DIR/homeassistant-${HA_VERSION}.tar.gz"
+SOURCE_ROOT="$HOME/src"
+SOURCE_PATH="$SOURCE_ROOT/$HA_SOURCE_DIR"
+
+# cryptography (via maturin) needs Android API level when building from source on Termux.
+if [ -n "${ANDROID_API_LEVEL:-}" ]; then
+  ANDROID_API_LEVEL="${ANDROID_API_LEVEL}"
+else
+  ANDROID_API_LEVEL="$(getprop ro.build.version.sdk 2>/dev/null || true)"
+fi
+if [ -z "$ANDROID_API_LEVEL" ]; then
+  ANDROID_API_LEVEL="$(uname -r | sed -n 's/.*android\([0-9][0-9]*\).*/\1/p' | head -n1)"
+fi
+if [ -z "$ANDROID_API_LEVEL" ]; then
+  echo "ERROR: Could not determine Android API level for Python package builds." >&2
+  echo "Set ANDROID_API_LEVEL manually and rerun this script." >&2
+  exit 1
+fi
+export ANDROID_API_LEVEL
+
+# Install pinned native Termux packages first.
+pkg install -y "${LOCK_TERMUX_PACKAGES[@]}"
+
+CURRENT_PYTHON="$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')"
+MIN_PYTHON="${HA_REQUIRES_PYTHON#>=}"
+if [ -n "$MIN_PYTHON" ] && [ "$(printf '%s\n%s\n' "$MIN_PYTHON" "$CURRENT_PYTHON" | sort -V | head -n1)" != "$MIN_PYTHON" ]; then
+  echo "ERROR: Home Assistant ${HA_VERSION} requires Python ${HA_REQUIRES_PYTHON}, but Termux currently provides Python ${CURRENT_PYTHON}." >&2
+  echo "Install is blocked until Termux ships a compatible Python or the installer uses an alternate Python runtime." >&2
+  exit 1
+fi
+
+# Create venv with system site-packages so the Termux-patched psutil is visible.
+VENV="$HOME/.venv"
+if command -v uv >/dev/null 2>&1 && [ "${HA_INSTALL_TOOL:-uv}" != "pip" ]; then
+  INSTALL_TOOL="uv"
+  uv venv --system-site-packages "$VENV"
+else
+  INSTALL_TOOL="pip"
+  python3 -m venv --system-site-packages "$VENV"
+fi
+
+source "$VENV/bin/activate"
+
+mkdir -p "$ARCHIVE_DIR" "$SOURCE_ROOT"
+rm -rf "$SOURCE_PATH"
+curl -Lf --retry 3 --retry-delay 2 -o "$ARCHIVE_PATH" "$HA_SOURCE_URL"
+printf '%s  %s\n' "$HA_SOURCE_SHA256" "$ARCHIVE_PATH" | sha256sum -c -
+tar -xzf "$ARCHIVE_PATH" -C "$SOURCE_ROOT"
+
+# Pre-populate the venv with Termux's pre-built psutil so neither pip nor uv
+# attempt a source build (Android is not supported in psutil 7.x upstream build).
+SYS_SP="/data/data/com.termux/files/usr/lib/python3.13/site-packages"
+VENV_SP="$VENV/lib/python3.13/site-packages"
+for _path in "$SYS_SP"/psutil "$SYS_SP"/psutil-*.dist-info "$SYS_SP"/_psutil_linux*.so "$SYS_SP"/_psutil_posix*.so; do
+  if [ -e "$_path" ]; then
+    cp -r "$_path" "$VENV_SP/"
+  fi
+done
+# grpcio is heavy to compile on Android; use the Termux-packaged build.
+for _path in "$SYS_SP"/grpc "$SYS_SP"/grpcio-*.dist-info "$SYS_SP"/_grpc*.so; do
+  if [ -e "$_path" ]; then
+    cp -r "$_path" "$VENV_SP/"
+  fi
+done
+unset _path SYS_SP VENV_SP
+
+cd "$SOURCE_PATH"
+
+# Build Termux-specific requirements/constraints:
+# - keep upstream pins where possible for reproducibility
+# - skip Python uv package (native Termux uv binary is used instead)
+# - drop grpcio hard pins that force source builds on Android
+REQ_FILE="requirements.termux.txt"
+CONSTRAINT_FILE="homeassistant/package_constraints.termux.txt"
+sed '/^grpcio==/d;/^grpcio-status==/d;/^grpcio-reflection==/d;/^uv==/d' \
+  homeassistant/package_constraints.txt > "$CONSTRAINT_FILE"
+sed "s#^-c homeassistant/package_constraints.txt#-c $CONSTRAINT_FILE#" requirements.txt | \
+  sed '/^uv==/d' > "$REQ_FILE"
+
+echo "Installing Home Assistant using: $INSTALL_TOOL"
+if [ -f "$PYTHON_FREEZE_PATH" ]; then
+  echo "Using resolved Python lock: $PYTHON_FREEZE_PATH"
+  if [ "$INSTALL_TOOL" = "uv" ]; then
+    if uv pip install --python "$VENV/bin/python" -r "$PYTHON_FREEZE_PATH" && uv pip install --python "$VENV/bin/python" --no-deps .; then
+      true
+    else
+      echo "WARNING: uv install failed on this Android environment; falling back to pip." >&2
+      pip install --upgrade pip wheel setuptools
+      pip install -r "$PYTHON_FREEZE_PATH"
+      pip install --no-deps .
+    fi
+  else
+    pip install --upgrade pip wheel setuptools
+    pip install -r "$PYTHON_FREEZE_PATH"
+    pip install --no-deps .
+  fi
+else
+  echo "Using official Home Assistant release requirements"
+  if [ "$INSTALL_TOOL" = "uv" ]; then
+    if uv pip install --python "$VENV/bin/python" -r "$REQ_FILE" && uv pip install --python "$VENV/bin/python" --no-deps .; then
+      true
+    else
+      echo "WARNING: uv install failed on this Android environment; falling back to pip." >&2
+      pip install --upgrade pip wheel setuptools
+      pip install -r "$REQ_FILE"
+      pip install --no-deps .
+    fi
+  else
+    pip install --upgrade pip wheel setuptools
+    pip install -r "$REQ_FILE"
+    pip install --no-deps .
+  fi
+fi
+
+pip freeze --all | LC_ALL=C sort > "$PYTHON_FREEZE_PATH"
+REMOTE_INSTALL
+
+scp "${SCP_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}:~/.provisioning/locks/homeassistant-${HA_VERSION}.python-freeze.txt" "${PYTHON_FREEZE_FILE}"
 
 ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'bash -lc "source ~/.venv/bin/activate && nohup sshd >/dev/null 2>&1 || true"'
 

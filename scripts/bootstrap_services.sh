@@ -1,6 +1,10 @@
 #!/data/data/com.termux/files/usr/bin/sh
 termux-wake-lock
 
+PREFIX="/data/data/com.termux/files/usr"
+PATH="${PREFIX}/bin:${PATH}"
+export PREFIX PATH
+
 LOG_DIR="/data/data/com.termux/files/home/logs"
 LOG_FILE="${LOG_DIR}/bootstrap.log"
 HASS_SCRIPT="/data/data/com.termux/files/home/scripts/hass.sh"
@@ -10,6 +14,10 @@ TAILSCALE_SOCKET="$PREFIX/var/run/tailscale/tailscaled.sock"
 TAILSCALE_STATE="$PREFIX/var/lib/tailscale/tailscaled.state"
 
 mkdir -p "${LOG_DIR}"
+
+command_exists() {
+  command -v "$1" >/dev/null 2>&1
+}
 
 log() {
   printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" | tee -a "${LOG_FILE}"
@@ -28,11 +36,16 @@ wait_for_tailscale_socket() {
 }
 
 start_vpn() {
+  if [ ! -x "${TAILSCALED_BIN}" ] || [ ! -x "${TAILSCALE_BIN}" ]; then
+    log "VPN: tailscale binaries not found at ${TAILSCALED_BIN} and ${TAILSCALE_BIN}; skipping"
+    return
+  fi
+
   if pgrep -f "tailscaled.*userspace-networking" >/dev/null 2>&1; then
     log "VPN: tailscaled is already running"
   else
     log "VPN: starting tailscaled"
-    nohup sudo "${TAILSCALED_BIN}" -tun userspace-networking --state="${TAILSCALE_STATE}" -socket "${TAILSCALE_SOCKET}" >>"${LOG_FILE}" 2>&1 &
+    nohup "${TAILSCALED_BIN}" -tun userspace-networking --state="${TAILSCALE_STATE}" -socket "${TAILSCALE_SOCKET}" >>"${LOG_FILE}" 2>&1 &
   fi
 
   if wait_for_tailscale_socket; then
@@ -48,15 +61,35 @@ start_vpn() {
 }
 
 start_ssh() {
+  if ! command_exists sshd; then
+    log "SSH: sshd binary not found in PATH; skipping"
+    return
+  fi
+
   if pgrep -x sshd >/dev/null 2>&1; then
     log "SSH: sshd is already running"
   else
     log "SSH: starting sshd"
-    sshd >>"${LOG_FILE}" 2>&1
+    if sshd >>"${LOG_FILE}" 2>&1; then
+      log "SSH: sshd started"
+    else
+      log "SSH: sshd failed to start"
+    fi
   fi
 }
 
 start_hass() {
+  if ! command_exists screen; then
+    log "HA: screen binary not found; cannot start supervised session"
+    return
+  fi
+  if [ ! -x "${HASS_SCRIPT}" ]; then
+    log "HA: hass script is missing or not executable at ${HASS_SCRIPT}"
+    return
+  fi
+
+  screen -wipe >/dev/null 2>&1 || true
+
   if screen -ls | grep -q "[.]hass"; then
     log "HA: screen session hass already exists"
     return
@@ -65,11 +98,17 @@ start_hass() {
   log "HA: starting Home Assistant in screen session 'hass'"
   screen -dmS hass sh "${HASS_SCRIPT}"
 
-  if screen -ls | grep -q "[.]hass"; then
-    log "HA: screen session started"
-  else
-    log "HA: failed to create screen session"
-  fi
+  i=0
+  while [ "$i" -lt 8 ]; do
+    if screen -ls | grep -q "[.]hass"; then
+      log "HA: screen session started"
+      return
+    fi
+    i=$((i + 1))
+    sleep 1
+  done
+
+  log "HA: failed to create screen session (check ~/logs/hass-runner.log)"
 }
 
 log "Bootstrap: begin"

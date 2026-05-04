@@ -66,7 +66,14 @@ uv --version || true
 printf \"== services ==\\n\"
 pgrep -fa tailscaled || true
 pgrep -x sshd || true
+pgrep -fa \"hass|homeassistant\" || true
 screen -ls || true
-printf \"== bootstrap log tail ==\\n\"
+printf \"== bootstrap log tail (~/logs/bootstrap.log) ==\\n\"
 tail -n 80 ~/logs/bootstrap.log || true
+printf \"== hass runner log tail (~/logs/hass-runner.log) ==\\n\"
+tail -n 80 ~/logs/hass-runner.log || true
+printf \"== HA core log tail (~/.suroot/.homeassistant/home-assistant.log) ==\\n\"
+tail -n 80 ~/.suroot/.homeassistant/home-assistant.log || true
+printf \"== HA core log tail (~/.homeassistant/home-assistant.log) ==\\n\"
+tail -n 80 ~/.homeassistant/home-assistant.log || true
 "'

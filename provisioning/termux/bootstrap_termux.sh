@@ -26,7 +26,7 @@ fi
 BASE_PACKAGES=(
   openssh git python rust uv tsu ffmpeg
   libxml2 libxslt pkg-config libffi libjpeg-turbo libpng
-  patchelf ninja screen
+  patchelf ninja screen cmake python-psutil
 )
 
 if [ -n "${BINUTILS_PKG}" ]; then
