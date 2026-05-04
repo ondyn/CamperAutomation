@@ -1,3 +1,2 @@
 #!/data/data/com.termux/files/usr/bin/sh
-termux-wake-lock
-sshd
+echo "Deprecated: boot/ssh is managed by boot/00-bootstrap"

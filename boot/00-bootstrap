@@ -1,0 +1,5 @@
+#!/data/data/com.termux/files/usr/bin/sh
+termux-wake-lock
+echo "Termux boot: running supervised bootstrap..."
+sh /data/data/com.termux/files/home/scripts/bootstrap_services.sh
+echo "Termux boot: bootstrap complete"

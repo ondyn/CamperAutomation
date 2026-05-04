@@ -1,0 +1,20 @@
+# macOS
+.DS_Store
+
+# Home Assistant runtime state
+.storage/
+hass-config/home-assistant.log
+hass-config/home-assistant.log.*
+hass-config/.cloud/
+hass-config/deps/
+
+# Secrets — never commit
+secrets.yaml
+
+# ESPHome build artefacts
+.esphome/
+archive/
+
+# Provisioning logs and downloaded APKs
+provisioning/logs/
+provisioning/apks/*.apk

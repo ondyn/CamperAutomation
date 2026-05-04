@@ -1,3 +1,2 @@
 #!/data/data/com.termux/files/usr/bin/sh
-termux-wake-lock
-sudo ~/vpn/tailscaled -tun userspace-networking --state=$PREFIX/var/lib/tailscale/tailscaled.state -socket $PREFIX/var/run/tailscale/tailscaled.sock
+echo "Deprecated: boot/vpn is managed by boot/00-bootstrap"

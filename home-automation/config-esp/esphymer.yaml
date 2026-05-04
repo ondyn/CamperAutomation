@@ -1,29 +1,45 @@
 esphome:
   name: esphymer
   friendly_name: EspHymer
+  # platformio_options:
+  #   monitor_speed: 115200
+  #   board_build.mcu: esp32c3
+  #   board_build.variant: esp32c3
+  #   board_build.flash_mode: dio 
+  #   board_upload.flash_size: "2MB"
+  #   board_upload.maximum_size: 2097152
+  #   board_build.partitions: c3_2mb_partition.csv
 
 esp32:
   board: esp32-c3-devkitm-1
-
+  # board: lolin_c3_mini
   framework:
-    type: arduino
+    type: esp-idf
+    #type: arduino
+
+# esp32:
+#   board: esp32dev
+#   variant: ESP32C3
+#   framework:
+#     type: esp-idf
+#     version: recommended
 
 # Enable logging
 logger:
-  level: INFO
+  level: DEBUG
 
 # Enable Home Assistant API
 api:
   encryption:
-    key: "g7Md1bzfJrRLDf3NdJpODAljdNggVf3OIzD0/pp58cE="
+    key: !secret enc_key
 
 ota:
   - platform: esphome
     password: !secret ota_pwd
 
 wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
+  ssid: !secret hymer_wifi_ssid
+  password: !secret hymer_wifi_password
 
   # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
@@ -32,9 +48,16 @@ wifi:
 
 captive_portal:
 
+globals:
+  - id: PI
+    type: double
+    restore_value: yes
+    initial_value: '3.14159265358979323846'
 
 external_components:
-  - source: github://Fabian-Schmidt/esphome-truma_inetbox
+  # - source: github://ondyn/esphome-truma_inetbox
+  - source:  github://cobaltfish/esphome-truma_inetbox@feature/esphome-2024.12
+  #- source: github://Fabian-Schmidt/esphome-truma_inetbox
     components: ["truma_inetbox"]
 
 uart:
@@ -184,7 +207,7 @@ sensor:
     name: roll
     accuracy_decimals: 3
     lambda: |-
-      return  (atan( id(accel_y).state / sqrt( pow( id(accel_x).state , 2) + pow( id(accel_z).state , 2) ) ) * 180 / PI) ;
+      return  (atan( id(accel_y).state / sqrt( pow( id(accel_x).state , 2) + pow( id(accel_z).state , 2) ) ) * 180 / id(PI)) ;
     update_interval: 200ms
     unit_of_measurement: "°"
 
@@ -193,7 +216,7 @@ sensor:
     name: pitch
     accuracy_decimals: 3
     lambda: |-
-      return  (atan(-1 * id(accel_x).state / sqrt(pow(id(accel_y).state, 2) + pow(id(accel_z).state, 2))) * 180 / PI);
+      return  (atan(-1 * id(accel_x).state / sqrt(pow(id(accel_y).state, 2) + pow(id(accel_z).state, 2))) * 180 / id(PI));
     update_interval: 200ms
     unit_of_measurement: "°"
 
@@ -202,7 +225,7 @@ sensor:
     name: angleX
     accuracy_decimals: 3
     lambda: |-
-      return  (asin(id(accel_x).state / 9.81) * 180 / PI) * -1;
+      return  (asin(id(accel_x).state / 9.81) * 180 / id(PI)) * -1;
     update_interval: 200ms
     unit_of_measurement: "°"
 
@@ -211,7 +234,7 @@ sensor:
     name: angleY
     accuracy_decimals: 3
     lambda: |-
-      return  (asin(id(accel_y).state / 9.81) * 180 / PI) * -1;
+      return  (asin(id(accel_y).state / 9.81) * 180 / id(PI)) * -1;
     update_interval: 200ms
     unit_of_measurement: "°"
 
