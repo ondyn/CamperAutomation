@@ -6,6 +6,7 @@ set -euo pipefail
 #   ./provisioning/adb/00_run_all_adb_steps.sh [OPTIONS]
 # 
 # Options:
+#   --skip-debloat    Skip Xiaomi Mi11 debloat step
 #   --skip-hotspot     Skip hotspot boot script setup (step 4)
 #   --help             Show this message
 
@@ -15,10 +16,12 @@ ORCHESTRATOR_LOG="${LOG_DIR}/usb-provision-$(date +%Y%m%d-%H%M%S).log"
 mkdir -p "${LOG_DIR}"
 
 SKIP_HOTSPOT=0
+SKIP_DEBLOAT=0
 for arg in "$@"; do
   case "$arg" in
     --skip-hotspot) SKIP_HOTSPOT=1 ;;
-    --help) echo "Usage: $0 [--skip-hotspot] [--help]"; exit 0 ;;
+    --skip-debloat) SKIP_DEBLOAT=1 ;;
+    --help) echo "Usage: $0 [--skip-debloat] [--skip-hotspot] [--help]"; exit 0 ;;
     *) echo "Unknown option: $arg" >&2; exit 1 ;;
   esac
 done
@@ -45,6 +48,7 @@ fail() {
   echo "Started: $(date)"
   echo "Log: ${ORCHESTRATOR_LOG}"
   echo "Root dir: ${ROOT_DIR}"
+  echo "Skip debloat: ${SKIP_DEBLOAT}"
   echo "Skip hotspot: ${SKIP_HOTSPOT}"
 } | tee "${ORCHESTRATOR_LOG}"
 
@@ -75,8 +79,21 @@ else
   log "  bash ${ROOT_DIR}/provisioning/adb/03_install_apks.sh"
 fi
 
-# Step 4: Push Termux bootstrap script to phone shared storage.
-log_header "Step 4: Push Termux bootstrap script"
+# Step 4: Debloat (optional, recommended for HA-dedicated device)
+if [ "${SKIP_DEBLOAT}" -eq 0 ]; then
+  log_header "Step 4: Remove Xiaomi/MIUI bloatware"
+  if bash "${ROOT_DIR}/provisioning/adb/06_remove_bloatware_mi11.sh" >> "${ORCHESTRATOR_LOG}" 2>&1; then
+    log "✓ Debloat step completed"
+  else
+    warn "Debloat step reported failures (some protected packages may resist removal)"
+    log "  Review details in: ${ORCHESTRATOR_LOG}"
+  fi
+else
+  log_header "Step 4: Remove Xiaomi/MIUI bloatware (SKIPPED)"
+fi
+
+# Step 5: Push Termux bootstrap script to phone shared storage.
+log_header "Step 5: Push Termux bootstrap script"
 if bash "${ROOT_DIR}/provisioning/adb/03b_push_termux_bootstrap.sh" >> "${ORCHESTRATOR_LOG}" 2>&1; then
   log "✓ Termux bootstrap script delivered (preferred: ~/bootstrap_termux.sh)"
 else
@@ -84,9 +101,9 @@ else
   log "  Manual fallback: adb push provisioning/termux/bootstrap_termux.sh /sdcard/Download/bootstrap_termux.sh"
 fi
 
-# Step 5: Setup hotspot boot (optional)
+# Step 6: Setup hotspot boot (optional)
 if [ "${SKIP_HOTSPOT}" -eq 0 ]; then
-  log_header "Step 5: Setup hotspot autostart"
+  log_header "Step 6: Setup hotspot autostart"
   if bash "${ROOT_DIR}/provisioning/adb/04_setup_hotspot_boot_magisk.sh" >> "${ORCHESTRATOR_LOG}" 2>&1; then
     log "✓ Hotspot boot setup succeeded"
   else
@@ -94,7 +111,7 @@ if [ "${SKIP_HOTSPOT}" -eq 0 ]; then
     log "  Run this later after Magisk is installed: bash ${ROOT_DIR}/provisioning/adb/04_setup_hotspot_boot_magisk.sh"
   fi
 else
-  log_header "Step 5: Setup hotspot autostart (SKIPPED)"
+  log_header "Step 6: Setup hotspot autostart (SKIPPED)"
 fi
 
 {

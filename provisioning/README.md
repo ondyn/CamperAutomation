@@ -32,6 +32,7 @@ Or run individual steps:
    - `provisioning/adb/01_check_phone.sh` – baseline device check
    - `provisioning/adb/02_download_apks.sh` – ABI-aware APK download
    - `provisioning/adb/03_install_apks.sh` – install apps via ADB
+   - `provisioning/adb/06_remove_bloatware_mi11.sh` – strict Xiaomi Mi 11 debloat for HA-dedicated device
    - `provisioning/adb/03b_push_termux_bootstrap.sh` – push Termux bootstrap script to `/sdcard/Download`
    - `provisioning/adb/04_setup_hotspot_boot_magisk.sh` – hotspot autostart (Magisk)
    - `provisioning/adb/05_diagnose_hotspot.sh` – test which hotspot command works
