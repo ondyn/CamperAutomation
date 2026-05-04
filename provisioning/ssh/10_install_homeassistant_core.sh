@@ -25,6 +25,7 @@ HA_SOURCE_SHA256="${HA_SOURCE_SHA256:-${LOCK_HA_SOURCE_SHA256}}"
 HA_SOURCE_DIR="${HA_SOURCE_DIR:-${LOCK_HA_SOURCE_DIR}}"
 HA_REQUIRES_PYTHON="${HA_REQUIRES_PYTHON:-${LOCK_HA_REQUIRES_PYTHON}}"
 HA_INSTALL_TOOL="${HA_INSTALL_TOOL:-${LOCK_HA_INSTALL_TOOL}}"
+HA_USE_FREEZE_LOCK="${HA_USE_FREEZE_LOCK:-0}"
 LOCK_BASENAME="$(basename "${LOCK_FILE}")"
 PYTHON_FREEZE_FILE="${ROOT_DIR}/provisioning/locks/homeassistant-${HA_VERSION}.python-freeze.txt"
 
@@ -160,7 +161,7 @@ fi
 
 ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'chmod 700 ~/.termux/boot/00-bootstrap ~/scripts/bootstrap_services.sh ~/scripts/hass.sh'
 
-ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" "LOCK_BASENAME='${LOCK_BASENAME}' HA_INSTALL_TOOL_OVERRIDE='${HA_INSTALL_TOOL}' bash -s" <<'REMOTE_INSTALL'
+ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" "LOCK_BASENAME='${LOCK_BASENAME}' HA_INSTALL_TOOL_OVERRIDE='${HA_INSTALL_TOOL}' HA_USE_FREEZE_LOCK='${HA_USE_FREEZE_LOCK}' bash -s" <<'REMOTE_INSTALL'
 set -euo pipefail
 cd ~
 
@@ -179,7 +180,9 @@ HA_SOURCE_SHA256="${LOCK_HA_SOURCE_SHA256}"
 HA_SOURCE_DIR="${LOCK_HA_SOURCE_DIR}"
 HA_REQUIRES_PYTHON="${LOCK_HA_REQUIRES_PYTHON}"
 HA_INSTALL_TOOL="${HA_INSTALL_TOOL_OVERRIDE:-${LOCK_HA_INSTALL_TOOL}}"
+HA_RUNTIME_PIP_PACKAGES=("${LOCK_HA_RUNTIME_PIP_PACKAGES[@]:-}")
 PYTHON_FREEZE_PATH="$HOME/.provisioning/locks/homeassistant-${HA_VERSION}.python-freeze.txt"
+USE_FREEZE_LOCK="${HA_USE_FREEZE_LOCK:-0}"
 ARCHIVE_DIR="$HOME/.cache/provisioning"
 ARCHIVE_PATH="$ARCHIVE_DIR/homeassistant-${HA_VERSION}.tar.gz"
 SOURCE_ROOT="$HOME/src"
@@ -200,9 +203,38 @@ if [ -z "$ANDROID_API_LEVEL" ]; then
   exit 1
 fi
 export ANDROID_API_LEVEL
+export TMPDIR="${PREFIX}/tmp"
+mkdir -p "$TMPDIR"
+export SODIUM_INSTALL=system
+export CFLAGS="-I${PREFIX}/include"
+export LDFLAGS="-L${PREFIX}/lib"
 
-# Install pinned native Termux packages first.
-pkg install -y "${LOCK_TERMUX_PACKAGES[@]}"
+# Install pinned native Termux packages first, but degrade to the current
+# mirror version when an exact historical pin has been rotated out.
+RESOLVED_TERMUX_PACKAGES=()
+for pkg_spec in "${LOCK_TERMUX_PACKAGES[@]}"; do
+  if [[ "$pkg_spec" == *=* ]]; then
+    pkg_name="${pkg_spec%%=*}"
+    pkg_version="${pkg_spec#*=}"
+    current_version="$(pkg show "$pkg_name" 2>/dev/null | sed -n 's/^Version: //p' | head -n1)"
+
+    if [ -z "$current_version" ]; then
+      echo "ERROR: Required Termux package '$pkg_name' is not available from the current mirror." >&2
+      exit 1
+    fi
+
+    if [ "$current_version" = "$pkg_version" ]; then
+      RESOLVED_TERMUX_PACKAGES+=("$pkg_spec")
+    else
+      echo "WARNING: Termux mirror no longer provides $pkg_spec; using $pkg_name=$current_version instead." >&2
+      RESOLVED_TERMUX_PACKAGES+=("$pkg_name")
+    fi
+  else
+    RESOLVED_TERMUX_PACKAGES+=("$pkg_spec")
+  fi
+done
+
+pkg install -y "${RESOLVED_TERMUX_PACKAGES[@]}"
 
 CURRENT_PYTHON="$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')"
 MIN_PYTHON="${HA_REQUIRES_PYTHON#>=}"
@@ -214,12 +246,15 @@ fi
 
 # Create venv with system site-packages so the Termux-patched psutil is visible.
 VENV="$HOME/.venv"
+if [ -d "$VENV" ]; then
+  rm -rf "$VENV"
+fi
+python3 -m venv --system-site-packages "$VENV"
+
 if command -v uv >/dev/null 2>&1 && [ "${HA_INSTALL_TOOL:-uv}" != "pip" ]; then
   INSTALL_TOOL="uv"
-  uv venv --system-site-packages "$VENV"
 else
   INSTALL_TOOL="pip"
-  python3 -m venv --system-site-packages "$VENV"
 fi
 
 source "$VENV/bin/activate"
@@ -261,21 +296,21 @@ sed "s#^-c homeassistant/package_constraints.txt#-c $CONSTRAINT_FILE#" requireme
   sed '/^uv==/d' > "$REQ_FILE"
 
 echo "Installing Home Assistant using: $INSTALL_TOOL"
-if [ -f "$PYTHON_FREEZE_PATH" ]; then
+if [ "$USE_FREEZE_LOCK" = "1" ] && [ -f "$PYTHON_FREEZE_PATH" ]; then
   echo "Using resolved Python lock: $PYTHON_FREEZE_PATH"
   if [ "$INSTALL_TOOL" = "uv" ]; then
     if uv pip install --python "$VENV/bin/python" -r "$PYTHON_FREEZE_PATH" && uv pip install --python "$VENV/bin/python" --no-deps .; then
       true
     else
       echo "WARNING: uv install failed on this Android environment; falling back to pip." >&2
-      pip install --upgrade pip wheel setuptools
-      pip install -r "$PYTHON_FREEZE_PATH"
-      pip install --no-deps .
+      "$VENV/bin/python" -m pip install --upgrade pip wheel setuptools
+      "$VENV/bin/python" -m pip install -r "$PYTHON_FREEZE_PATH"
+      "$VENV/bin/python" -m pip install --no-deps .
     fi
   else
-    pip install --upgrade pip wheel setuptools
-    pip install -r "$PYTHON_FREEZE_PATH"
-    pip install --no-deps .
+    "$VENV/bin/python" -m pip install --upgrade pip wheel setuptools
+    "$VENV/bin/python" -m pip install -r "$PYTHON_FREEZE_PATH"
+    "$VENV/bin/python" -m pip install --no-deps .
   fi
 else
   echo "Using official Home Assistant release requirements"
@@ -284,18 +319,72 @@ else
       true
     else
       echo "WARNING: uv install failed on this Android environment; falling back to pip." >&2
-      pip install --upgrade pip wheel setuptools
-      pip install -r "$REQ_FILE"
-      pip install --no-deps .
+      "$VENV/bin/python" -m pip install --upgrade pip wheel setuptools
+      "$VENV/bin/python" -m pip install -r "$REQ_FILE"
+      "$VENV/bin/python" -m pip install --no-deps .
     fi
   else
-    pip install --upgrade pip wheel setuptools
-    pip install -r "$REQ_FILE"
-    pip install --no-deps .
+    "$VENV/bin/python" -m pip install --upgrade pip wheel setuptools
+    "$VENV/bin/python" -m pip install -r "$REQ_FILE"
+    "$VENV/bin/python" -m pip install --no-deps .
   fi
 fi
 
-pip freeze --all | LC_ALL=C sort > "$PYTHON_FREEZE_PATH"
+if [ ! -x "$VENV/bin/hass" ]; then
+  echo "ERROR: install completed but venv hass binary is missing at $VENV/bin/hass" >&2
+  exit 1
+fi
+
+if [ "${#HA_RUNTIME_PIP_PACKAGES[@]}" -gt 0 ]; then
+  echo "Installing Termux runtime extras: ${HA_RUNTIME_PIP_PACKAGES[*]}"
+  # Use uv for runtime extras to pick up the Termux build environment (CC, CFLAGS,
+  # LDFLAGS) set earlier in this script; pip may fail on native packages like netifaces.
+  if [ "$INSTALL_TOOL" = "uv" ]; then
+    uv pip install --python "$VENV/bin/python" "${HA_RUNTIME_PIP_PACKAGES[@]}"
+  else
+    "$VENV/bin/python" -m pip install "${HA_RUNTIME_PIP_PACKAGES[@]}"
+  fi
+fi
+
+# Patch pyserial list_ports_posix to recognise Android (sys.platform=='android').
+# Python 3.13 on Android returns sys.platform='android', not 'linux'.  pyserial
+# falls through to an ImportError because it only checks [:5]=='linux'.  Android
+# uses the Linux kernel so list_ports_linux works correctly there.
+PYSERIAL_PORTS_POSIX="$VENV/lib/python3.13/site-packages/serial/tools/list_ports_posix.py"
+if [ -f "$PYSERIAL_PORTS_POSIX" ]; then
+  if grep -q 'plat\[:5\].*linux' "$PYSERIAL_PORTS_POSIX" && \
+     ! grep -q "android" "$PYSERIAL_PORTS_POSIX"; then
+    sed -i "s/if plat\[:5\] == 'linux':/if plat[:5] == 'linux' or plat == 'android':  # Android uses Linux kernel/" \
+      "$PYSERIAL_PORTS_POSIX"
+    echo "Patched pyserial list_ports_posix.py for Android platform"
+  fi
+fi
+
+# HA's pip package does not include translations/*.json files for components —
+# they're only present as strings.json.  The translation loader uses has_translations
+# (checks for a "translations/" directory) to decide whether to load them.
+# Without translations/en.json, onboarding crashes with KeyError on area names,
+# and other backend translations (states, services) are silently empty.
+# Fix: copy strings.json -> translations/en.json for every component that needs one.
+echo "Generating translations/en.json from strings.json for all components..."
+"$VENV/bin/python" - "$VENV" <<'PYEOF'
+import json, pathlib, sys
+
+base = pathlib.Path(sys.argv[1]) / "lib/python3.13/site-packages/homeassistant/components"
+count = 0
+for comp_dir in base.iterdir():
+    strings_file = comp_dir / "strings.json"
+    translations_dir = comp_dir / "translations"
+    en_file = translations_dir / "en.json"
+    if strings_file.exists() and not en_file.exists():
+        translations_dir.mkdir(exist_ok=True)
+        data = json.loads(strings_file.read_text())
+        en_file.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+        count += 1
+print(f"Created {count} translations/en.json files")
+PYEOF
+
+"$VENV/bin/python" -m pip freeze --all | LC_ALL=C sort > "$PYTHON_FREEZE_PATH"
 REMOTE_INSTALL
 
 scp "${SCP_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}:~/.provisioning/locks/homeassistant-${HA_VERSION}.python-freeze.txt" "${PYTHON_FREEZE_FILE}"

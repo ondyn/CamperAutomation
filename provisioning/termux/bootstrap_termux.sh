@@ -4,11 +4,22 @@ set -euo pipefail
 # Run inside Termux app on the phone (first interactive bootstrap).
 # This keeps interactive steps minimal: storage permission + ssh password.
 
-BOOTSTRAP_VERSION="2026-05-03.2"
+BOOTSTRAP_VERSION="2026-05-04.1"
 echo "[bootstrap_termux] version=${BOOTSTRAP_VERSION}"
 
 termux-wake-lock
+
+echo
+echo "Granting Termux shared storage access..."
 termux-setup-storage || true
+
+if [ -d "$HOME/storage/downloads" ]; then
+  echo "Shared storage is available at: $HOME/storage/downloads"
+else
+  echo "WARNING: Termux storage shortcut was not created yet."
+  echo "         If Android showed a storage permission prompt, allow it and rerun: termux-setup-storage"
+  echo "         Shared-storage provisioning fallbacks depend on this path."
+fi
 
 pkg update -y
 pkg upgrade -y

@@ -116,7 +116,6 @@ com.android.thememanager
 com.android.updater
 com.miui.notes
 com.miui.cleaner
-com.miui.securitycenter
 com.miui.player
 com.miui.videoplayer
 com.miui.compass
@@ -128,6 +127,10 @@ EOF
 
 # Remove all third-party packages except required apps.
 KEEP_3P='^(com\.termux|com\.termux\.boot|io\.homeassistant\.companion\.android|com\.topjohnwu\.magisk)$'
+
+# Never remove core settings/security packages even if they appear as third-party/updated apps.
+PROTECTED_PKGS='^(com\.android\.settings|com\.android\.settings\..*|com\.android\.permissioncontroller|com\.google\.android\.packageinstaller|com\.miui\.securitycenter|com\.miui\.securitycore|com\.lbe\.security\.miui|com\.miui\.securityadd|com\.xiaomi\.account|com\.xiaomi\.finddevice)$'
+
 adb shell pm list packages -3 | sed 's/^package://g' | tr -d '\r' | while IFS= read -r pkg; do
   [ -n "${pkg}" ] || continue
   if ! printf '%s\n' "${pkg}" | grep -Eq "${KEEP_3P}"; then
@@ -152,6 +155,12 @@ contains_pkg() {
 remove_pkg() {
   local pkg="$1"
   TOTAL=$((TOTAL + 1))
+
+  if printf '%s\n' "${pkg}" | grep -Eq "${PROTECTED_PKGS}"; then
+    echo "[skip] ${pkg} (protected critical package)"
+    SKIPPED=$((SKIPPED + 1))
+    return 0
+  fi
 
   if ! contains_pkg "${pkg}"; then
     echo "[skip] ${pkg} (not present)"

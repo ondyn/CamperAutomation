@@ -69,11 +69,11 @@ pgrep -x sshd || true
 pgrep -fa \"hass|homeassistant\" || true
 screen -ls || true
 printf \"== bootstrap log tail (~/logs/bootstrap.log) ==\\n\"
-tail -n 80 ~/logs/bootstrap.log || true
+[ -f ~/logs/bootstrap.log ] && tail -n 80 ~/logs/bootstrap.log || echo \"(not found)\"
 printf \"== hass runner log tail (~/logs/hass-runner.log) ==\\n\"
-tail -n 80 ~/logs/hass-runner.log || true
+[ -f ~/logs/hass-runner.log ] && tail -n 80 ~/logs/hass-runner.log || echo \"(not found)\"
 printf \"== HA core log tail (~/.suroot/.homeassistant/home-assistant.log) ==\\n\"
-tail -n 80 ~/.suroot/.homeassistant/home-assistant.log || true
+[ -f ~/.suroot/.homeassistant/home-assistant.log ] && tail -n 80 ~/.suroot/.homeassistant/home-assistant.log || echo \"(not found)\"
 printf \"== HA core log tail (~/.homeassistant/home-assistant.log) ==\\n\"
-tail -n 80 ~/.homeassistant/home-assistant.log || true
+[ -f ~/.homeassistant/home-assistant.log ] && tail -n 80 ~/.homeassistant/home-assistant.log || echo \"(not found)\"
 "'

@@ -46,11 +46,17 @@ adb shell "run-as com.termux sh -lc 'grep -n BOOTSTRAP_VERSION /data/data/com.te
 cat <<EOF
 Bootstrap script has been delivered.
 
+Open Termux once before using shared-storage fallbacks and run:
+  termux-setup-storage
+
 In Termux, run:
   bash ~/bootstrap_termux.sh
 
 Alternate explicit path:
   bash /data/data/com.termux/files/home/bootstrap_termux.sh
 
-Note: /sdcard paths may be inaccessible until storage permissions are granted in Termux.
+Shared-storage fallback after termux-setup-storage:
+  bash ~/storage/downloads/bootstrap_termux.sh
+
+Note: /sdcard paths may be inaccessible in Termux until storage permissions are granted with termux-setup-storage.
 EOF

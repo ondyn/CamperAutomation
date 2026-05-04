@@ -107,8 +107,10 @@ if [ "${SKIP_HOTSPOT}" -eq 0 ]; then
   if bash "${ROOT_DIR}/provisioning/adb/04_setup_hotspot_boot_magisk.sh" >> "${ORCHESTRATOR_LOG}" 2>&1; then
     log "✓ Hotspot boot setup succeeded"
   else
-    warn "Hotspot boot setup was skipped (requires Magisk root which may not be installed yet)"
-    log "  Run this later after Magisk is installed: bash ${ROOT_DIR}/provisioning/adb/04_setup_hotspot_boot_magisk.sh"
+    warn "Hotspot boot setup did not complete automatically"
+    log "  Review the script output in: ${ORCHESTRATOR_LOG}"
+    log "  On some Xiaomi builds, adb-shell root cannot write /data/adb/service.d even when Magisk is present."
+    log "  In that case, run the printed Termux fallback command on the phone, then reboot."
   fi
 else
   log_header "Step 6: Setup hotspot autostart (SKIPPED)"
@@ -122,8 +124,11 @@ fi
   echo "Next steps:"
   echo "0. If APK install was blocked on Xiaomi: enable Developer options -> Install via USB,"
   echo "   and sign in/confirm Xiaomi account when MIUI asks."
-  echo "1. Use Magisk to grant su permissions if prompted"
-  echo "2. Open Termux on the phone and run: bash ~/bootstrap_termux.sh"
-  echo "3. From laptop: PHONE_HOST=<IP> PHONE_USER=<user> provisioning/ssh/10_install_homeassistant_core.sh"
-  echo "4. Validate with: provisioning/ssh/20_post_install_checks.sh"
+  echo "1. Open Termux on the phone and run: termux-setup-storage"
+  echo "   Approve the Android storage permission prompt. Shared-storage fallbacks depend on this."
+  echo "2. Use Magisk to grant su permissions if prompted"
+  echo "3. In Termux, run: bash ~/bootstrap_termux.sh"
+  echo "4. If a fallback script was staged in /sdcard/Download, access it from Termux via ~/storage/downloads/"
+  echo "5. From laptop: PHONE_HOST=<IP> PHONE_USER=<user> provisioning/ssh/10_install_homeassistant_core.sh"
+  echo "6. Validate with: provisioning/ssh/20_post_install_checks.sh"
 } | tee -a "${ORCHESTRATOR_LOG}"

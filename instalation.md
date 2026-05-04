@@ -152,6 +152,11 @@ This pushes `bootstrap_termux.sh` to:
 - `/sdcard/Download/bootstrap_termux.sh`
 - `/sdcard/Downloads/bootstrap_termux.sh`
 
+Important:
+
+- Open Termux once and run `termux-setup-storage` before relying on any `/sdcard` fallback path from inside Termux.
+- In Termux, the same file is then available as `~/storage/downloads/bootstrap_termux.sh`.
+
 ---
 
 ### 4d) Configure hotspot autostart on rooted phone (Magisk service)
@@ -166,6 +171,10 @@ cd /Users/ondrejhnyk/Documents/CamperAutomation
 This installs:
 
 - `/data/adb/service.d/80-hotspot-on-boot.sh`
+
+If the script reports `Permission denied` while writing `/data/adb/service.d` from `adb shell`, that is a device-policy limitation on some Xiaomi/Magisk builds. In that case the script stages a fallback copy at `/sdcard/Download/80-hotspot-on-boot.sh` and prints an exact Termux command to run with `su` on the phone.
+
+For that fallback to work from Termux, run `termux-setup-storage` first so `/sdcard/Download/` is visible as `~/storage/downloads/`.
 
 Behavior:
 
@@ -210,8 +219,11 @@ Before opening Termux, confirm USB app installation was allowed:
 Open Termux once on phone and run:
 
 ```sh
+termux-setup-storage
 bash ~/bootstrap_termux.sh
 ```
+
+Approve the Android storage permission prompt if shown. This is required for any provisioning fallback that stages files in `/sdcard/Download/`.
 
 If that path fails, fallback:
 

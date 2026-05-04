@@ -1,6 +1,24 @@
 
-# Loads default set of integrations. Do not remove.
-default_config:
+# default_config replaced with explicit list: 'usb' and 'bluetooth' are excluded
+# because aiousbwatcher/aiousbwatcher raises "no implementation for your platform
+# ('posix') available" on Android/Termux (Python 3.13 sys.platform == 'android').
+assist_pipeline:
+cloud:
+conversation:
+energy:
+file:
+history:
+homeassistant_alerts:
+logbook:
+media_source:
+mobile_app:
+my:
+ssdp:
+stream:
+sun:
+usage_prediction:
+webhook:
+zeroconf:
 
 # Load frontend themes from the themes folder
 frontend:
