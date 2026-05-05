@@ -79,6 +79,27 @@ else
   log "  bash ${ROOT_DIR}/provisioning/adb/03_install_apks.sh"
 fi
 
+# Step 3b: Launch Termux:Boot once so Android registers it for future boot events.
+# Without this step Termux:Boot silently does nothing on the first reboot.
+log_header "Step 3b: Launch Termux:Boot activity (required once after install)"
+if adb shell am start -n com.termux.boot/.BootActivity >> "${ORCHESTRATOR_LOG}" 2>&1; then
+  sleep 2
+  log "✓ Termux:Boot activity launched"
+else
+  warn "Could not launch Termux:Boot activity via ADB (app may not be installed yet)"
+  log "  Manual fix: open Termux:Boot from the phone app drawer at least once before first reboot"
+fi
+
+# Exempt Termux and Termux:Boot from battery optimization / Doze.
+if adb shell cmd deviceidle whitelist +com.termux >> "${ORCHESTRATOR_LOG}" 2>&1 && \
+   adb shell cmd deviceidle whitelist +com.termux.boot >> "${ORCHESTRATOR_LOG}" 2>&1; then
+  log "✓ Termux and Termux:Boot added to Doze whitelist"
+else
+  warn "cmd deviceidle whitelist failed — add Termux and Termux:Boot to battery exemption manually:"
+  log "  Settings > Apps > Manage apps > Termux > Battery saver > No restrictions"
+  log "  Settings > Apps > Manage apps > Termux:Boot > Battery saver > No restrictions"
+fi
+
 # Step 4: Debloat (optional, recommended for HA-dedicated device)
 if [ "${SKIP_DEBLOAT}" -eq 0 ]; then
   log_header "Step 4: Remove Xiaomi/MIUI bloatware"
@@ -126,9 +147,11 @@ fi
   echo "   and sign in/confirm Xiaomi account when MIUI asks."
   echo "1. Open Termux on the phone and run: termux-setup-storage"
   echo "   Approve the Android storage permission prompt. Shared-storage fallbacks depend on this."
-  echo "2. Use Magisk to grant su permissions if prompted"
-  echo "3. In Termux, run: bash ~/bootstrap_termux.sh"
-  echo "4. If a fallback script was staged in /sdcard/Download, access it from Termux via ~/storage/downloads/"
-  echo "5. From laptop: PHONE_HOST=<IP> PHONE_USER=<user> provisioning/ssh/10_install_homeassistant_core.sh"
-  echo "6. Validate with: provisioning/ssh/20_post_install_checks.sh"
+echo "2. Also open Termux:Boot from the phone app drawer (at least once — if ADB launch above failed)."
+echo "   This is REQUIRED for auto-start on subsequent reboots."
+echo "3. Use Magisk to grant su permissions if prompted"
+echo "4. In Termux, run: bash ~/bootstrap_termux.sh"
+echo "5. If a fallback script was staged in /sdcard/Download, access it from Termux via ~/storage/downloads/"
+echo "6. From laptop: PHONE_HOST=<IP> PHONE_USER=<user> provisioning/ssh/10_install_homeassistant_core.sh"
+echo "7. Validate with: provisioning/ssh/20_post_install_checks.sh"
 } | tee -a "${ORCHESTRATOR_LOG}"

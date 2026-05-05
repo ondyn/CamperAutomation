@@ -13,12 +13,10 @@ logbook:
 media_source:
 mobile_app:
 my:
-ssdp:
 stream:
 sun:
 usage_prediction:
 webhook:
-zeroconf:
 
 # Load frontend themes from the themes folder
 frontend:

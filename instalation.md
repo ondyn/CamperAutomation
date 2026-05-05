@@ -253,6 +253,35 @@ Expected signal:
 
 - `sshd` running and password set.
 
+### 5b) Open Termux:Boot once (required for auto-start on reboot)
+
+Termux:Boot must be opened manually at least once after install. Without this, Android
+does not register it to receive boot events and nothing starts after reboot.
+
+The USB provisioning orchestrator (`00_run_all_adb_steps.sh`) attempts to do this
+automatically via `adb shell am start`. Verify it worked:
+
+```sh
+adb shell dumpsys package com.termux.boot | grep -A3 'BOOT_COMPLETED'
+```
+
+If not done by ADB, open Termux:Boot from the phone app drawer manually (tap the icon once).
+
+Also exempt both apps from MIUI battery optimization:
+
+- Settings → Apps → Manage apps → Termux → Battery saver → **No restrictions**
+- Settings → Apps → Manage apps → Termux:Boot → Battery saver → **No restrictions**
+
+Also allow app autostart in MIUI Security app:
+
+- Security → Permissions → **Autostart** → enable **Termux**, **Termux:Boot**, and **Magisk**
+
+If boot scripts still do not start reliably after reboot, disable lock screen:
+
+- Settings → Passwords & security → Screen lock → enter current PIN/pattern → **Turn off screen lock**
+
+Note: on some MIUI builds, boot broadcast delivery to user apps is delayed or blocked until after first unlock.
+
 ---
 
 ## 6) SSH phase: deploy boot scripts + install Home Assistant Core
@@ -301,8 +330,49 @@ tail -n 100 ~/logs/bootstrap.log
 Success criteria:
 
 - `screen -ls` contains `.hass`
-- bootstrap log shows VPN -> SSH -> HA sequence
-- Home Assistant Companion can connect over VPN
+- bootstrap log shows `VPN -> SSH -> HA` sequence
+- Home Assistant Companion can connect
+
+### Diagnosing Termux:Boot if services don't start after reboot
+
+Run the boot diagnostics script from the laptop (phone connected via USB):
+
+```sh
+./provisioning/adb/07_diagnose_boot.sh
+```
+
+This checks:
+
+- APK signing key match between Termux and Termux:Boot
+- Boot script presence and permissions in `~/.termux/boot/`
+- `RECEIVE_BOOT_COMPLETED` permission granted
+- Battery optimization / Doze whitelist
+- logcat evidence that Termux:Boot ran at last boot
+- Current state of sshd, tailscaled, hass screen
+- Contents of `~/logs/bootstrap.log`
+
+Common issue: Termux:Boot was never opened manually. Fix:
+
+```sh
+adb shell am start -n com.termux.boot/.BootActivity
+```
+
+### Diagnosing Home Assistant startup after reboot
+
+Run this from laptop with phone connected via USB:
+
+```sh
+./provisioning/adb/08_diagnose_hass.sh
+```
+
+This checks:
+
+- `hass.sh` launcher presence and permissions
+- Home Assistant process and `:8123` listener state
+- HTTP probe to `http://127.0.0.1:8123/`
+- Tail of `~/logs/hass-runner.log`
+- Tail of Home Assistant core log (`~/.suroot/.homeassistant/home-assistant.log` or `~/.homeassistant/home-assistant.log`)
+- Tail of HA-related lines in `~/logs/bootstrap.log`
 
 ---
 
@@ -414,6 +484,9 @@ provisioning/
     03b_push_termux_bootstrap.sh
     04_setup_hotspot_boot_magisk.sh
     05_diagnose_hotspot.sh
+    06_remove_bloatware_mi11.sh
+    07_diagnose_boot.sh
+    08_diagnose_hass.sh
   android/
     magisk-service/
       80-hotspot-on-boot.sh
