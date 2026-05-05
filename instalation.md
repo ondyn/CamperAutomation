@@ -311,6 +311,23 @@ This script:
 
 ## 7) Post-install validation
 
+Install HACS as an independent next provisioning step:
+
+```sh
+cd /Users/ondrejhnyk/Documents/CamperAutomation
+PHONE_HOST=<PHONE_IP_OR_HOSTNAME> PHONE_USER=<TERMUX_USER> ./provisioning/ssh/15_install_hacs.sh
+```
+
+This step:
+
+- auto-detects HA config location used on the phone (`~/.suroot/.homeassistant` preferred, fallback `~/.homeassistant`)
+- installs or updates HACS via official installer (`https://get.hacs.xyz`)
+- verifies `custom_components/hacs/manifest.json` exists
+
+After it completes, restart Home Assistant once so HACS is discovered.
+
+## 8) Post-install validation
+
 From laptop:
 
 ```sh
@@ -321,7 +338,8 @@ PHONE_HOST=<PHONE_IP_OR_HOSTNAME> PHONE_USER=<TERMUX_USER> ./provisioning/ssh/20
 On phone (SSH):
 
 ```sh
-screen -dmS hass sh ~/scripts/hass.sh
+~/scripts/hassctl.sh start
+~/scripts/hassctl.sh status
 screen -ls
 tail -n 100 ~/.homeassistant/home-assistant.log
 tail -n 100 ~/logs/bootstrap.log

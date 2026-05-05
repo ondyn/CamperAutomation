@@ -5,6 +5,11 @@ PREFIX="/data/data/com.termux/files/usr"
 PATH="${PREFIX}/bin:${PATH}"
 export PREFIX PATH
 
+# DNS on Android/Termux can be flaky during early startup; pin resolvers for
+# libraries using c-ares (aiodns) and for libc resolver behavior.
+export CARES_SERVERS="1.1.1.1,8.8.8.8,9.9.9.9"
+export RES_OPTIONS="timeout:2 attempts:2"
+
 HOME_DIR="/data/data/com.termux/files/home"
 VENV_ACTIVATE="${HOME_DIR}/.venv/bin/activate"
 HASS_BIN="${HOME_DIR}/.venv/bin/hass"

@@ -54,8 +54,7 @@ tail -n 200 /data/data/com.termux/files/home/.suroot/.homeassistant/home-assista
 Recovery:
 
 ```sh
-screen -S hass -X quit || true
-screen -dmS hass sh /data/data/com.termux/files/home/scripts/hass.sh
+/data/data/com.termux/files/home/scripts/hassctl.sh restart
 ```
 
 Success signal:

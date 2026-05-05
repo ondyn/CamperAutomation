@@ -153,13 +153,14 @@ ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'mkdir -p ~/scripts ~/logs ~/
 scp "${SCP_OPTS[@]}" "${ROOT_DIR}/boot/00-bootstrap" "${PHONE_USER}@${PHONE_HOST}:~/.termux/boot/00-bootstrap"
 scp "${SCP_OPTS[@]}" "${ROOT_DIR}/scripts/bootstrap_services.sh" "${PHONE_USER}@${PHONE_HOST}:~/scripts/bootstrap_services.sh"
 scp "${SCP_OPTS[@]}" "${ROOT_DIR}/scripts/hass.sh" "${PHONE_USER}@${PHONE_HOST}:~/scripts/hass.sh"
+scp "${SCP_OPTS[@]}" "${ROOT_DIR}/scripts/hassctl.sh" "${PHONE_USER}@${PHONE_HOST}:~/scripts/hassctl.sh"
 scp "${SCP_OPTS[@]}" "${LOCK_FILE}" "${PHONE_USER}@${PHONE_HOST}:~/.provisioning/locks/${LOCK_BASENAME}"
 
 if [ -f "${PYTHON_FREEZE_FILE}" ]; then
   scp "${SCP_OPTS[@]}" "${PYTHON_FREEZE_FILE}" "${PHONE_USER}@${PHONE_HOST}:~/.provisioning/locks/$(basename "${PYTHON_FREEZE_FILE}")"
 fi
 
-ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'chmod 700 ~/.termux/boot/00-bootstrap ~/scripts/bootstrap_services.sh ~/scripts/hass.sh'
+ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'chmod 700 ~/.termux/boot/00-bootstrap ~/scripts/bootstrap_services.sh ~/scripts/hass.sh ~/scripts/hassctl.sh'
 
 ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" "LOCK_BASENAME='${LOCK_BASENAME}' HA_INSTALL_TOOL_OVERRIDE='${HA_INSTALL_TOOL}' HA_USE_FREEZE_LOCK='${HA_USE_FREEZE_LOCK}' bash -s" <<'REMOTE_INSTALL'
 set -euo pipefail
@@ -395,7 +396,7 @@ cat <<EOF
 Remote install finished.
 
 Validate on phone (over SSH):
-  screen -dmS hass sh ~/scripts/hass.sh
-  screen -ls
+  ~/scripts/hassctl.sh start
+  ~/scripts/hassctl.sh status
   tail -n 80 ~/.suroot/.homeassistant/home-assistant.log
 EOF

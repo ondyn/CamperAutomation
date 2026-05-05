@@ -43,9 +43,11 @@ Or run individual steps:
 
 3. SSH phase (from laptop):
    - `provisioning/ssh/10_install_homeassistant_core.sh` – deploy HA core + boot scripts
+   - `provisioning/ssh/15_install_hacs.sh` – install/update HACS in active HA config dir
+   - `provisioning/ssh/16_install_ha_startup_requirements.sh` – install missing Python modules seen in HA startup logs
    - `provisioning/ssh/20_post_install_checks.sh` – validate installation
    - `provisioning/ssh/30_harden_ssh_key_auth.sh` – SSH key auth + disable password
 
+## Notes
 
-# Notes
-- Root Xiaomi Mi11 https://droidwin.com/how-to-root-xiaomi-eu-rom-via-magisk/
+- Root Xiaomi Mi11: <https://droidwin.com/how-to-root-xiaomi-eu-rom-via-magisk/>

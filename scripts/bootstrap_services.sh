@@ -8,6 +8,7 @@ export PREFIX PATH
 LOG_DIR="/data/data/com.termux/files/home/logs"
 LOG_FILE="${LOG_DIR}/bootstrap.log"
 HASS_SCRIPT="/data/data/com.termux/files/home/scripts/hass.sh"
+HASS_CTL="/data/data/com.termux/files/home/scripts/hassctl.sh"
 TAILSCALED_BIN="/data/data/com.termux/files/home/vpn/tailscaled"
 TAILSCALE_BIN="/data/data/com.termux/files/home/vpn/tailscale"
 TAILSCALE_SOCKET="$PREFIX/var/run/tailscale/tailscaled.sock"
@@ -96,6 +97,16 @@ start_ssh() {
 }
 
 start_hass() {
+  if [ -x "${HASS_CTL}" ]; then
+    log "HA: starting via hassctl"
+    if "${HASS_CTL}" start >>"${LOG_FILE}" 2>&1; then
+      log "HA: hassctl start succeeded"
+    else
+      log "HA: hassctl start failed (check ~/logs/hass-runner.log)"
+    fi
+    return
+  fi
+
   if ! command_exists screen; then
     log "HA: screen binary not found; cannot start supervised session"
     return
