@@ -121,17 +121,14 @@ echo "Using Home Assistant config: $HASS_CONFIG_DIR"
 
 if ! command -v curl >/dev/null 2>&1; then
   echo "Installing curl in Termux..."
-  pkg install -y curl
-fi
-
-if ! command -v wget >/dev/null 2>&1; then
-  echo "Installing wget in Termux (required by HACS installer)..."
-  pkg install -y wget
-fi
-
-if ! command -v unzip >/dev/null 2>&1; then
-  echo "Installing unzip in Termux (required by HACS installer)..."
-  pkg install -y unzip
+  if command -v apt >/dev/null 2>&1; then
+    apt install -y curl
+  elif command -v pkg >/dev/null 2>&1; then
+    pkg install -y curl
+  else
+    echo "ERROR: Neither apt nor pkg is available to install curl." >&2
+    exit 1
+  fi
 fi
 
 if [ -d "$HASS_CONFIG_DIR/custom_components/hacs" ]; then
@@ -152,17 +149,43 @@ if [ ! -f "$HASS_CONFIG_DIR/.HA_VERSION" ]; then
   echo "$HA_VER" > "$HASS_CONFIG_DIR/.HA_VERSION"
 fi
 
-cd "$HASS_CONFIG_DIR"
-curl -fsSL https://get.hacs.xyz | bash -
-
-if [ ! -f "$HASS_CONFIG_DIR/custom_components/hacs/manifest.json" ]; then
-  echo "ERROR: HACS install did not produce custom_components/hacs/manifest.json" >&2
-  exit 1
-fi
-
 VENV_PY="$HOME/.venv/bin/python"
 if [ ! -x "$VENV_PY" ]; then
   echo "ERROR: Home Assistant venv python not found at $VENV_PY" >&2
+  exit 1
+fi
+
+cd "$HASS_CONFIG_DIR"
+
+TMP_DIR="$(mktemp -d)"
+cleanup_tmp() {
+  rm -rf "$TMP_DIR"
+}
+trap cleanup_tmp EXIT
+
+echo "Downloading latest HACS release archive..."
+curl -fsSL -o "$TMP_DIR/hacs.zip" "https://github.com/hacs/integration/releases/latest/download/hacs.zip"
+
+echo "Installing HACS files into custom_components/hacs..."
+mkdir -p "$HASS_CONFIG_DIR/custom_components/hacs"
+if command -v unzip >/dev/null 2>&1; then
+  unzip -oq "$TMP_DIR/hacs.zip" -d "$HASS_CONFIG_DIR/custom_components/hacs"
+else
+  "$VENV_PY" - "$TMP_DIR/hacs.zip" "$HASS_CONFIG_DIR/custom_components/hacs" <<'PY'
+import sys
+import zipfile
+from pathlib import Path
+
+zip_path = Path(sys.argv[1])
+target_dir = Path(sys.argv[2])
+target_dir.mkdir(parents=True, exist_ok=True)
+with zipfile.ZipFile(zip_path) as zf:
+    zf.extractall(target_dir)
+PY
+fi
+
+if [ ! -f "$HASS_CONFIG_DIR/custom_components/hacs/manifest.json" ]; then
+  echo "ERROR: HACS install did not produce custom_components/hacs/manifest.json" >&2
   exit 1
 fi
 

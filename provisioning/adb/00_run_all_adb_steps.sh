@@ -2,6 +2,8 @@
 set -euo pipefail
 
 # USB phase orchestrator: runs all ADB provisioning steps in sequence with unified logging.
+# Maintainer note: keep this orchestrator password-only for SSH auth.
+# SSH key provisioning and password disablement must stay in provisioning/ssh/30_harden_ssh_key_auth.sh.
 # Usage:
 #   ./provisioning/adb/00_run_all_adb_steps.sh [OPTIONS]
 # 
@@ -14,7 +16,6 @@ set -euo pipefail
 #   --skip-tailscale  Skip Tailscale installation
 #   --skip-post-checks Skip post-install validation
 #   --tailscale-authkey <key>  Use non-interactive Tailscale auth
-#   --use-ssh-key      Seed SSH key and use identity file (default: password flow)
 #   --help             Show this message
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -29,13 +30,8 @@ SKIP_HA=0
 SKIP_HACS=0
 SKIP_TAILSCALE=0
 SKIP_POST_CHECKS=0
-USE_SSH_KEY=0
 TAILSCALE_AUTHKEY=""
 SSH_PORT="${SSH_PORT:-8022}"
-SSH_KEY_NAME="${SSH_KEY_NAME:-camper_automation_rsa}"
-SSH_KEY_DIR="${HOME}/.ssh"
-SSH_KEY_PRIV="${SSH_KEY_DIR}/${SSH_KEY_NAME}"
-SSH_KEY_PUB="${SSH_KEY_PRIV}.pub"
 TERMUX_BASE_PATH=""
 PROVISION_SSH_PASSWORD="${PROVISION_SSH_PASSWORD:-}"
 
@@ -48,7 +44,6 @@ while [ "$#" -gt 0 ]; do
     --skip-hacs) SKIP_HACS=1 ;;
     --skip-tailscale) SKIP_TAILSCALE=1 ;;
     --skip-post-checks) SKIP_POST_CHECKS=1 ;;
-    --use-ssh-key) USE_SSH_KEY=1 ;;
     --tailscale-authkey)
       shift
       TAILSCALE_AUTHKEY="${1:-}"
@@ -58,7 +53,7 @@ while [ "$#" -gt 0 ]; do
       fi
       ;;
     --help)
-      echo "Usage: $0 [--skip-debloat] [--skip-hotspot] [--skip-bootstrap] [--skip-ha] [--skip-hacs] [--skip-tailscale] [--skip-post-checks] [--tailscale-authkey <key>] [--use-ssh-key] [--help]"
+      echo "Usage: $0 [--skip-debloat] [--skip-hotspot] [--skip-bootstrap] [--skip-ha] [--skip-hacs] [--skip-tailscale] [--skip-post-checks] [--tailscale-authkey <key>] [--help]"
       exit 0
       ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -75,25 +70,6 @@ auto_detect_phone_user_adb() {
     return 0
   fi
   return 1
-}
-
-ensure_local_ssh_key() {
-  if [ -f "${SSH_KEY_PUB}" ]; then
-    log "✓ Using existing SSH public key: ${SSH_KEY_PUB}"
-    return 0
-  fi
-
-  mkdir -p "${SSH_KEY_DIR}"
-  log "Generating SSH keypair for provisioning: ${SSH_KEY_PRIV}"
-  ssh-keygen -t rsa -b 4096 -f "${SSH_KEY_PRIV}" -N "" -C "camper-automation@$(date +%Y%m%d)" >> "${ORCHESTRATOR_LOG}" 2>&1
-  chmod 600 "${SSH_KEY_PRIV}"
-  chmod 644 "${SSH_KEY_PUB}"
-  log "✓ Generated SSH keypair"
-}
-
-seed_termux_authorized_keys() {
-  adb wait-for-device
-  adb shell "run-as com.termux sh -c 'mkdir -p /data/data/com.termux/files/home/.ssh && chmod 700 /data/data/com.termux/files/home/.ssh && cat > /data/data/com.termux/files/home/.ssh/authorized_keys && chmod 600 /data/data/com.termux/files/home/.ssh/authorized_keys'" < "${SSH_KEY_PUB}" >> "${ORCHESTRATOR_LOG}" 2>&1
 }
 
 launch_termux_app() {
@@ -203,9 +179,6 @@ run_ssh_phase() {
   if [ -n "${PROVISION_SSH_PASSWORD}" ]; then
     phase_env+=(SSH_PASSWORD="${PROVISION_SSH_PASSWORD}")
   fi
-  if [ "${USE_SSH_KEY}" -eq 1 ]; then
-    phase_env+=(SSH_IDENTITY="${SSH_KEY_PRIV}")
-  fi
   log_header "${label}"
   if env "${phase_env[@]}" "$@" >> "${ORCHESTRATOR_LOG}" 2>&1; then
     log "✓ ${label} succeeded"
@@ -243,7 +216,7 @@ fail() {
   echo "Skip HACS: ${SKIP_HACS}"
   echo "Skip Tailscale: ${SKIP_TAILSCALE}"
   echo "Skip post checks: ${SKIP_POST_CHECKS}"
-  echo "Use SSH key flow: ${USE_SSH_KEY}"
+  echo "SSH auth mode for orchestrator: password-only"
 } | tee "${ORCHESTRATOR_LOG}"
 
 # Step 1: Check phone
@@ -336,21 +309,11 @@ if [ -z "${PHONE_USER}" ]; then
   fail "Could not auto-detect PHONE_USER from ADB package metadata"
 fi
 log "Detected PHONE_USER=${PHONE_USER}"
+log "Note: 00_run_all_adb_steps.sh intentionally uses password-based SSH only."
+log "      Manual SSH key hardening is separate: provisioning/ssh/30_harden_ssh_key_auth.sh"
 
 if [ "${SKIP_BOOTSTRAP}" -eq 0 ]; then
-  if [ "${USE_SSH_KEY}" -eq 1 ]; then
-    log_header "Step 7: Seed SSH key into Termux"
-    ensure_local_ssh_key
-    if seed_termux_authorized_keys; then
-      log "✓ Seeded ~/.ssh/authorized_keys in Termux home"
-    else
-      fail "Failed to seed Termux authorized_keys via ADB"
-    fi
-  else
-    log_header "Step 7: Seed SSH key into Termux (SKIPPED - password flow)"
-  fi
-
-  log_header "Step 7b: Stop stale device sshd listeners"
+  log_header "Step 7: Stop stale device sshd listeners"
   stop_stale_device_sshd
   log "✓ Cleared stale sshd listeners before bootstrap"
 
@@ -452,10 +415,7 @@ fi
   echo "2. Also open Termux:Boot from the phone app drawer once if the ADB launch above failed."
   echo "3. Use Magisk to grant su permissions if prompted during Tailscale or Home Assistant setup."
   echo "4. Log file: ${ORCHESTRATOR_LOG}"
-  if [ "${USE_SSH_KEY}" -eq 1 ]; then
-    echo "5. SSH endpoint during USB provisioning: ssh -i ${SSH_KEY_PRIV} -p ${SSH_PORT} ${PHONE_USER}@127.0.0.1"
-  else
-    echo "5. SSH endpoint during USB provisioning: ssh -p ${SSH_PORT} ${PHONE_USER}@127.0.0.1"
-    echo "   Password: ${PROVISION_SSH_PASSWORD}"
-  fi
+  echo "5. SSH endpoint during USB provisioning: ssh -p ${SSH_PORT} ${PHONE_USER}@127.0.0.1"
+  echo "   Password: ${PROVISION_SSH_PASSWORD}"
+  echo "6. Optional manual hardening after provisioning: provisioning/ssh/30_harden_ssh_key_auth.sh"
 } | tee -a "${ORCHESTRATOR_LOG}"

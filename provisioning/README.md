@@ -20,6 +20,12 @@ cd /Users/ondrejhnyk/Documents/CamperAutomation
 ./provisioning/adb/00_run_all_adb_steps.sh
 ```
 
+SSH authentication policy for the orchestrator:
+
+- `provisioning/adb/00_run_all_adb_steps.sh` is intentionally password-only for SSH phases.
+- SSH key deployment and password disablement are intentionally manual in `provisioning/ssh/30_harden_ssh_key_auth.sh`.
+- Do not reintroduce SSH key login toggles into the USB orchestrator.
+
 Important Xiaomi/MIUI note:
 
 - Enable `Install via USB` in Developer options before APK install.
@@ -48,7 +54,7 @@ Or run individual steps:
    - `provisioning/ssh/15_install_hacs.sh` – install/update HACS in active HA config dir
    - `provisioning/ssh/16_install_ha_startup_requirements.sh` – install missing Python modules seen in HA startup logs
    - `provisioning/ssh/20_post_install_checks.sh` – validate installation
-   - `provisioning/ssh/30_harden_ssh_key_auth.sh` – SSH key auth + disable password
+   - `provisioning/ssh/30_harden_ssh_key_auth.sh` – manual step: SSH key auth + disable password
 
 ## Notes
 
