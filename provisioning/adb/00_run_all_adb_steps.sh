@@ -7,7 +7,14 @@ set -euo pipefail
 # 
 # Options:
 #   --skip-debloat    Skip Xiaomi Mi11 debloat step
-#   --skip-hotspot     Skip hotspot boot script setup (step 4)
+#   --skip-hotspot    Skip hotspot boot script setup
+#   --skip-bootstrap  Skip running bootstrap_termux.sh via ADB
+#   --skip-ha         Skip Home Assistant Core installation
+#   --skip-hacs       Skip HACS installation
+#   --skip-tailscale  Skip Tailscale installation
+#   --skip-post-checks Skip post-install validation
+#   --tailscale-authkey <key>  Use non-interactive Tailscale auth
+#   --use-ssh-key      Seed SSH key and use identity file (default: password flow)
 #   --help             Show this message
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -17,14 +24,195 @@ mkdir -p "${LOG_DIR}"
 
 SKIP_HOTSPOT=0
 SKIP_DEBLOAT=0
-for arg in "$@"; do
-  case "$arg" in
+SKIP_BOOTSTRAP=0
+SKIP_HA=0
+SKIP_HACS=0
+SKIP_TAILSCALE=0
+SKIP_POST_CHECKS=0
+USE_SSH_KEY=0
+TAILSCALE_AUTHKEY=""
+SSH_PORT="${SSH_PORT:-8022}"
+SSH_KEY_NAME="${SSH_KEY_NAME:-camper_automation_rsa}"
+SSH_KEY_DIR="${HOME}/.ssh"
+SSH_KEY_PRIV="${SSH_KEY_DIR}/${SSH_KEY_NAME}"
+SSH_KEY_PUB="${SSH_KEY_PRIV}.pub"
+TERMUX_BASE_PATH=""
+PROVISION_SSH_PASSWORD="${PROVISION_SSH_PASSWORD:-}"
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
     --skip-hotspot) SKIP_HOTSPOT=1 ;;
     --skip-debloat) SKIP_DEBLOAT=1 ;;
-    --help) echo "Usage: $0 [--skip-debloat] [--skip-hotspot] [--help]"; exit 0 ;;
-    *) echo "Unknown option: $arg" >&2; exit 1 ;;
+    --skip-bootstrap) SKIP_BOOTSTRAP=1 ;;
+    --skip-ha) SKIP_HA=1 ;;
+    --skip-hacs) SKIP_HACS=1 ;;
+    --skip-tailscale) SKIP_TAILSCALE=1 ;;
+    --skip-post-checks) SKIP_POST_CHECKS=1 ;;
+    --use-ssh-key) USE_SSH_KEY=1 ;;
+    --tailscale-authkey)
+      shift
+      TAILSCALE_AUTHKEY="${1:-}"
+      if [ -z "${TAILSCALE_AUTHKEY}" ]; then
+        echo "Missing value for --tailscale-authkey" >&2
+        exit 1
+      fi
+      ;;
+    --help)
+      echo "Usage: $0 [--skip-debloat] [--skip-hotspot] [--skip-bootstrap] [--skip-ha] [--skip-hacs] [--skip-tailscale] [--skip-post-checks] [--tailscale-authkey <key>] [--use-ssh-key] [--help]"
+      exit 0
+      ;;
+    *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
+  shift
 done
+
+auto_detect_phone_user_adb() {
+  local pkg_uid app_uid
+  pkg_uid=$(adb shell dumpsys package com.termux 2>/dev/null | tr -d '\r' | awk -F= '/userId=/{print $2; exit}') || true
+  if [[ -n "${pkg_uid:-}" && "${pkg_uid}" =~ ^[0-9]+$ && "${pkg_uid}" -ge 10000 ]]; then
+    app_uid=$((pkg_uid - 10000))
+    echo "u0_a${app_uid}"
+    return 0
+  fi
+  return 1
+}
+
+ensure_local_ssh_key() {
+  if [ -f "${SSH_KEY_PUB}" ]; then
+    log "✓ Using existing SSH public key: ${SSH_KEY_PUB}"
+    return 0
+  fi
+
+  mkdir -p "${SSH_KEY_DIR}"
+  log "Generating SSH keypair for provisioning: ${SSH_KEY_PRIV}"
+  ssh-keygen -t rsa -b 4096 -f "${SSH_KEY_PRIV}" -N "" -C "camper-automation@$(date +%Y%m%d)" >> "${ORCHESTRATOR_LOG}" 2>&1
+  chmod 600 "${SSH_KEY_PRIV}"
+  chmod 644 "${SSH_KEY_PUB}"
+  log "✓ Generated SSH keypair"
+}
+
+seed_termux_authorized_keys() {
+  adb wait-for-device
+  adb shell "run-as com.termux sh -c 'mkdir -p /data/data/com.termux/files/home/.ssh && chmod 700 /data/data/com.termux/files/home/.ssh && cat > /data/data/com.termux/files/home/.ssh/authorized_keys && chmod 600 /data/data/com.termux/files/home/.ssh/authorized_keys'" < "${SSH_KEY_PUB}" >> "${ORCHESTRATOR_LOG}" 2>&1
+}
+
+launch_termux_app() {
+  adb shell monkey -p com.termux -c android.intent.category.LAUNCHER 1 >> "${ORCHESTRATOR_LOG}" 2>&1 || true
+}
+
+resolve_termux_base_path() {
+  TERMUX_BASE_PATH="$(adb shell run-as com.termux pwd 2>/dev/null | tr -d '\r' | head -n1 || true)"
+  if [ -z "${TERMUX_BASE_PATH}" ]; then
+    TERMUX_BASE_PATH="/data/data/com.termux"
+  fi
+}
+
+ensure_termux_runtime_ready() {
+  local termux_bash
+  resolve_termux_base_path
+  termux_bash="${TERMUX_BASE_PATH}/files/usr/bin/bash"
+
+  if adb shell "run-as com.termux test -x '${termux_bash}'" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  log "Termux runtime not initialized yet; launching Termux and waiting for first-run setup..."
+  launch_termux_app
+
+  for _i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    if adb shell "run-as com.termux test -x '${termux_bash}'" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 1
+  done
+
+  warn "Termux runtime still not ready (missing ${termux_bash})."
+  warn "Open Termux once on the phone, wait for initial package extraction, then rerun."
+  return 1
+}
+
+run_bootstrap_via_adb() {
+  local termux_bash termux_bootstrap
+  adb wait-for-device
+  if ! ensure_termux_runtime_ready; then
+    return 1
+  fi
+
+  termux_bash="${TERMUX_BASE_PATH}/files/usr/bin/bash"
+  termux_bootstrap="${TERMUX_BASE_PATH}/files/home/bootstrap_termux.sh"
+
+  if [ -z "${PROVISION_SSH_PASSWORD}" ]; then
+    PROVISION_SSH_PASSWORD="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)"
+  fi
+
+  # Clear any stale host key before bootstrap generates a fresh SSH server key.
+  # accept-new only accepts truly-new keys; a changed key (fresh reinstall) will
+  # be rejected unless the old fingerprint is removed first.
+  ssh-keygen -R "[127.0.0.1]:${SSH_PORT}" >> "${ORCHESTRATOR_LOG}" 2>&1 || true
+
+  adb shell "run-as com.termux env TERMUX_SSH_PASSWORD='${PROVISION_SSH_PASSWORD}' '${termux_bash}' '${termux_bootstrap}'" >> "${ORCHESTRATOR_LOG}" 2>&1
+}
+
+# Read the SSH password that bootstrap wrote to the phone credentials file.
+# Used when --skip-bootstrap is set but no PROVISION_SSH_PASSWORD was supplied.
+read_phone_ssh_password() {
+  local cred_file="/data/data/com.termux/files/home/logs/bootstrap-credentials.txt"
+  adb shell "run-as com.termux cat '${cred_file}'" 2>/dev/null \
+    | tr -d '\r' | awk -F= '/^ssh_password/{print $2}' | head -1
+}
+
+prepare_local_ssh_tunnel() {
+  adb forward --remove "tcp:${SSH_PORT}" >/dev/null 2>&1 || true
+  adb forward "tcp:${SSH_PORT}" "tcp:${SSH_PORT}" >> "${ORCHESTRATOR_LOG}" 2>&1
+}
+
+stop_stale_device_sshd() {
+  local pids
+
+  if ! adb shell su -c 'true' >/dev/null 2>&1; then
+    warn "Magisk su is not available from ADB; skipping stale sshd cleanup."
+    return 0
+  fi
+
+  pids="$(adb shell su -c "ss -lntp 2>/dev/null | sed -n 's/.*users:((\"sshd\",pid=\\([0-9][0-9]*\\),.*/\\1/p' | sort -u" 2>/dev/null | tr -d '\r' | xargs || true)"
+  if [ -n "${pids}" ]; then
+    log "Stopping stale sshd pid(s): ${pids}"
+    adb shell su -c "kill ${pids} 2>/dev/null || true" >> "${ORCHESTRATOR_LOG}" 2>&1 || true
+  else
+    log "No stale sshd listeners found."
+  fi
+}
+
+wait_for_local_ssh() {
+  local tries=0
+  while [ "${tries}" -lt 20 ]; do
+    if nc -z 127.0.0.1 "${SSH_PORT}" >/dev/null 2>&1; then
+      return 0
+    fi
+    tries=$((tries + 1))
+    sleep 1
+  done
+  return 1
+}
+
+run_ssh_phase() {
+  local label="$1"
+  shift
+  local -a phase_env
+  phase_env=(PHONE_HOST=127.0.0.1 PHONE_USER="${PHONE_USER}" SSH_PORT="${SSH_PORT}")
+  if [ -n "${PROVISION_SSH_PASSWORD}" ]; then
+    phase_env+=(SSH_PASSWORD="${PROVISION_SSH_PASSWORD}")
+  fi
+  if [ "${USE_SSH_KEY}" -eq 1 ]; then
+    phase_env+=(SSH_IDENTITY="${SSH_KEY_PRIV}")
+  fi
+  log_header "${label}"
+  if env "${phase_env[@]}" "$@" >> "${ORCHESTRATOR_LOG}" 2>&1; then
+    log "✓ ${label} succeeded"
+  else
+    fail "${label} failed (see log for details)"
+  fi
+}
 
 log_header() {
   printf '\n=== %s ===\n' "$1" | tee -a "${ORCHESTRATOR_LOG}"
@@ -50,6 +238,12 @@ fail() {
   echo "Root dir: ${ROOT_DIR}"
   echo "Skip debloat: ${SKIP_DEBLOAT}"
   echo "Skip hotspot: ${SKIP_HOTSPOT}"
+  echo "Skip bootstrap: ${SKIP_BOOTSTRAP}"
+  echo "Skip Home Assistant: ${SKIP_HA}"
+  echo "Skip HACS: ${SKIP_HACS}"
+  echo "Skip Tailscale: ${SKIP_TAILSCALE}"
+  echo "Skip post checks: ${SKIP_POST_CHECKS}"
+  echo "Use SSH key flow: ${USE_SSH_KEY}"
 } | tee "${ORCHESTRATOR_LOG}"
 
 # Step 1: Check phone
@@ -137,6 +331,115 @@ else
   log_header "Step 6: Setup hotspot autostart (SKIPPED)"
 fi
 
+PHONE_USER="$(auto_detect_phone_user_adb || true)"
+if [ -z "${PHONE_USER}" ]; then
+  fail "Could not auto-detect PHONE_USER from ADB package metadata"
+fi
+log "Detected PHONE_USER=${PHONE_USER}"
+
+if [ "${SKIP_BOOTSTRAP}" -eq 0 ]; then
+  if [ "${USE_SSH_KEY}" -eq 1 ]; then
+    log_header "Step 7: Seed SSH key into Termux"
+    ensure_local_ssh_key
+    if seed_termux_authorized_keys; then
+      log "✓ Seeded ~/.ssh/authorized_keys in Termux home"
+    else
+      fail "Failed to seed Termux authorized_keys via ADB"
+    fi
+  else
+    log_header "Step 7: Seed SSH key into Termux (SKIPPED - password flow)"
+  fi
+
+  log_header "Step 7b: Stop stale device sshd listeners"
+  stop_stale_device_sshd
+  log "✓ Cleared stale sshd listeners before bootstrap"
+
+  log_header "Step 8: Run bootstrap_termux.sh via ADB"
+  if run_bootstrap_via_adb; then
+    log "✓ Termux bootstrap completed via ADB"
+    log "Provisioning SSH password for ${PHONE_USER}: ${PROVISION_SSH_PASSWORD}"
+    log "Phone copy: /data/data/com.termux/files/home/logs/bootstrap-credentials.txt"
+  else
+    fail "bootstrap_termux.sh failed via ADB"
+  fi
+
+  log_header "Step 9: Establish localhost SSH tunnel through ADB"
+  prepare_local_ssh_tunnel
+  if wait_for_local_ssh; then
+    log "✓ SSH is reachable on localhost:${SSH_PORT} through adb forward"
+  else
+    fail "SSH did not become reachable on localhost:${SSH_PORT}"
+  fi
+else
+  log_header "Step 7-9: Bootstrap and SSH tunnel (SKIPPED)"
+  # Recover SSH password from phone credentials if not supplied by caller.
+  if [ -z "${PROVISION_SSH_PASSWORD}" ]; then
+    PROVISION_SSH_PASSWORD="$(read_phone_ssh_password || true)"
+    if [ -n "${PROVISION_SSH_PASSWORD}" ]; then
+      log "Recovered SSH password from phone credentials file"
+    else
+      fail "PROVISION_SSH_PASSWORD is empty and could not be read from phone.\n       Set it explicitly: PROVISION_SSH_PASSWORD=<pass> $0 --skip-bootstrap ..."
+    fi
+  fi
+  if [ "${SKIP_HA}" -eq 0 ] || [ "${SKIP_TAILSCALE}" -eq 0 ] || [ "${SKIP_HACS}" -eq 0 ] || [ "${SKIP_POST_CHECKS}" -eq 0 ]; then
+    prepare_local_ssh_tunnel
+    if wait_for_local_ssh; then
+      log "✓ Reused existing SSH service on localhost:${SSH_PORT} through adb forward"
+    else
+      fail "SSH is required for the remaining steps but was not reachable on localhost:${SSH_PORT}"
+    fi
+  fi
+fi
+
+if [ "${SKIP_HA}" -eq 0 ]; then
+  run_ssh_phase "Step 10: Install Home Assistant Core" bash "${ROOT_DIR}/provisioning/ssh/10_install_homeassistant_core.sh"
+  run_ssh_phase "Step 11: Install HA startup requirements" bash "${ROOT_DIR}/provisioning/ssh/16_install_ha_startup_requirements.sh"
+else
+  log_header "Step 10-11: Home Assistant installation (SKIPPED)"
+fi
+
+if [ "${SKIP_TAILSCALE}" -eq 0 ]; then
+  if [ -n "${TAILSCALE_AUTHKEY}" ]; then
+    log_header "Step 12: Install and authenticate Tailscale"
+    if env PHONE_HOST=127.0.0.1 PHONE_USER="${PHONE_USER}" SSH_PORT="${SSH_PORT}" SSH_PASSWORD="${PROVISION_SSH_PASSWORD}" bash "${ROOT_DIR}/provisioning/ssh/40_setup_tailscale.sh" --authkey "${TAILSCALE_AUTHKEY}" >> "${ORCHESTRATOR_LOG}" 2>&1; then
+      log "✓ Step 12: Install and authenticate Tailscale succeeded"
+    else
+      warn "Step 12 failed; continuing without Tailscale."
+      log "  See log for details: ${ORCHESTRATOR_LOG}"
+      log "  Tailscale can be retried later with: PHONE_HOST=127.0.0.1 PHONE_USER=${PHONE_USER} SSH_PORT=${SSH_PORT} provisioning/ssh/40_setup_tailscale.sh"
+    fi
+  else
+    log_header "Step 12: Install Tailscale"
+    if env PHONE_HOST=127.0.0.1 PHONE_USER="${PHONE_USER}" SSH_PORT="${SSH_PORT}" SSH_PASSWORD="${PROVISION_SSH_PASSWORD}" bash "${ROOT_DIR}/provisioning/ssh/40_setup_tailscale.sh" >> "${ORCHESTRATOR_LOG}" 2>&1; then
+      log "✓ Step 12: Install Tailscale succeeded"
+    else
+      warn "Step 12 failed; continuing without Tailscale."
+      log "  See log for details: ${ORCHESTRATOR_LOG}"
+      log "  Tailscale can be retried later with: PHONE_HOST=127.0.0.1 PHONE_USER=${PHONE_USER} SSH_PORT=${SSH_PORT} provisioning/ssh/40_setup_tailscale.sh"
+    fi
+  fi
+else
+  log_header "Step 12: Tailscale installation (SKIPPED)"
+fi
+
+if [ "${SKIP_HACS}" -eq 0 ]; then
+  run_ssh_phase "Step 13: Install HACS" bash "${ROOT_DIR}/provisioning/ssh/15_install_hacs.sh"
+else
+  log_header "Step 13: HACS installation (SKIPPED)"
+fi
+
+if [ "${SKIP_POST_CHECKS}" -eq 0 ]; then
+  run_ssh_phase "Step 14: Run post-install checks" bash "${ROOT_DIR}/provisioning/ssh/20_post_install_checks.sh"
+else
+  log_header "Step 14: Post-install checks (SKIPPED)"
+fi
+
+if [ "${SKIP_HA}" -eq 0 ]; then
+  run_ssh_phase "Step 15: Restart Home Assistant" bash "${ROOT_DIR}/provisioning/ssh/25_restart_homeassistant.sh"
+else
+  log_header "Step 15: Restart Home Assistant (SKIPPED - HA install skipped)"
+fi
+
 {
   echo
   echo "=== USB Provisioning Complete ==="
@@ -145,14 +448,14 @@ fi
   echo "Next steps:"
   echo "0. If APK install was blocked on Xiaomi: enable Developer options -> Install via USB,"
   echo "   and sign in/confirm Xiaomi account when MIUI asks."
-  echo "1. Open Termux on the phone and run: termux-setup-storage"
-  echo "   Approve the Android storage permission prompt. Shared-storage fallbacks depend on this."
-echo "2. Also open Termux:Boot from the phone app drawer (at least once — if ADB launch above failed)."
-echo "   This is REQUIRED for auto-start on subsequent reboots."
-echo "3. Use Magisk to grant su permissions if prompted"
-echo "4. In Termux, run: bash ~/bootstrap_termux.sh"
-echo "5. If a fallback script was staged in /sdcard/Download, access it from Termux via ~/storage/downloads/"
-echo "6. From laptop: PHONE_HOST=<IP> PHONE_USER=<user> provisioning/ssh/10_install_homeassistant_core.sh"
-echo "7. Install HACS: PHONE_HOST=<IP> PHONE_USER=<user> provisioning/ssh/15_install_hacs.sh"
-echo "8. Validate with: provisioning/ssh/20_post_install_checks.sh"
+  echo "1. If Android showed a storage permission dialog for Termux, approve it on the phone."
+  echo "2. Also open Termux:Boot from the phone app drawer once if the ADB launch above failed."
+  echo "3. Use Magisk to grant su permissions if prompted during Tailscale or Home Assistant setup."
+  echo "4. Log file: ${ORCHESTRATOR_LOG}"
+  if [ "${USE_SSH_KEY}" -eq 1 ]; then
+    echo "5. SSH endpoint during USB provisioning: ssh -i ${SSH_KEY_PRIV} -p ${SSH_PORT} ${PHONE_USER}@127.0.0.1"
+  else
+    echo "5. SSH endpoint during USB provisioning: ssh -p ${SSH_PORT} ${PHONE_USER}@127.0.0.1"
+    echo "   Password: ${PROVISION_SSH_PASSWORD}"
+  fi
 } | tee -a "${ORCHESTRATOR_LOG}"

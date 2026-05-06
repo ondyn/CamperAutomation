@@ -14,7 +14,8 @@ SESSION_NAME="hass"
 HTTP_URL="http://127.0.0.1:8123/"
 RESOLV_CONF="${PREFIX}/etc/resolv.conf"
 DNS_WAIT_SECONDS="${DNS_WAIT_SECONDS:-12}"
-HASS_CONFIG_PATTERN="${HOME_DIR}/.homeassistant"
+ROOT_CONFIG_DIR="${HOME_DIR}/.suroot/.homeassistant"
+USER_CONFIG_DIR="${HOME_DIR}/.homeassistant"
 
 mkdir -p "${LOG_DIR}"
 
@@ -97,11 +98,31 @@ has_screen_session() {
 }
 
 has_hass_process() {
-  pgrep -f "${HASS_BIN} --ignore-os-check --skip-pip -c ${HASS_CONFIG_PATTERN}" >/dev/null 2>&1
+  pgrep -f "${HASS_BIN} --ignore-os-check --skip-pip -c ${ROOT_CONFIG_DIR}" >/dev/null 2>&1 || \
+    pgrep -f "${HASS_BIN} --ignore-os-check --skip-pip -c ${USER_CONFIG_DIR}" >/dev/null 2>&1
 }
 
 list_hass_processes() {
-  pgrep -a -f "${HASS_BIN} --ignore-os-check --skip-pip -c ${HASS_CONFIG_PATTERN}" || true
+  pgrep -a -f "${HASS_BIN} --ignore-os-check --skip-pip -c ${HOME_DIR}/" || true
+}
+
+stop_hass_processes_for_current_uid() {
+  pkill -TERM -f "${HASS_BIN} --ignore-os-check --skip-pip -c ${ROOT_CONFIG_DIR}" >/dev/null 2>&1 || true
+  pkill -TERM -f "${HASS_BIN} --ignore-os-check --skip-pip -c ${USER_CONFIG_DIR}" >/dev/null 2>&1 || true
+}
+
+kill_hass_processes_with_su() {
+  if ! command -v su >/dev/null 2>&1; then
+    return 0
+  fi
+  if ! su -c 'true' >/dev/null 2>&1; then
+    return 0
+  fi
+
+  # Clean up stale Home Assistant processes from previous Termux app UIDs.
+  su -c "pkill -TERM -f '${HASS_BIN} --ignore-os-check --skip-pip -c ${HOME_DIR}/' >/dev/null 2>&1 || true"
+  sleep 1
+  su -c "pkill -KILL -f '${HASS_BIN} --ignore-os-check --skip-pip -c ${HOME_DIR}/' >/dev/null 2>&1 || true"
 }
 
 wait_for_exit() {
@@ -117,6 +138,21 @@ wait_for_exit() {
 }
 
 wait_for_http() {
+  port_open() {
+    python3 - <<'PYEOF'
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.settimeout(1.0)
+try:
+    s.connect(("127.0.0.1", 8123))
+except OSError:
+    raise SystemExit(1)
+finally:
+    s.close()
+raise SystemExit(0)
+PYEOF
+  }
+
   i=0
   while [ "$i" -lt 60 ]; do
     if command -v curl >/dev/null 2>&1; then
@@ -126,9 +162,14 @@ wait_for_http() {
           return 0
           ;;
       esac
-    elif has_hass_process; then
+    fi
+
+    # HA may still return transient HTTP failures during startup while already
+    # listening. Treat "running process + open local port" as ready enough.
+    if has_hass_process && port_open; then
       return 0
     fi
+
     i=$((i + 1))
     sleep 1
   done
@@ -178,8 +219,10 @@ stop_hass() {
 
   if has_hass_process; then
     log "hassctl: terminating remaining Home Assistant process"
-    pkill -TERM -f "${HASS_BIN} --ignore-os-check --skip-pip -c ${HASS_CONFIG_PATTERN}" >/dev/null 2>&1 || true
+    stop_hass_processes_for_current_uid
   fi
+
+  kill_hass_processes_with_su || true
 
   if wait_for_exit; then
     echo "Home Assistant stopped."
@@ -188,7 +231,8 @@ stop_hass() {
 
   if has_hass_process; then
     log "hassctl: forcing remaining Home Assistant process to exit"
-    pkill -KILL -f "${HASS_BIN} --ignore-os-check --skip-pip -c ${HASS_CONFIG_PATTERN}" >/dev/null 2>&1 || true
+    pkill -KILL -f "${HASS_BIN} --ignore-os-check --skip-pip -c ${ROOT_CONFIG_DIR}" >/dev/null 2>&1 || true
+    pkill -KILL -f "${HASS_BIN} --ignore-os-check --skip-pip -c ${USER_CONFIG_DIR}" >/dev/null 2>&1 || true
   fi
   screen -wipe >/dev/null 2>&1 || true
 

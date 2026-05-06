@@ -124,45 +124,89 @@ fi
 : "${PHONE_HOST?Set PHONE_HOST to phone IP/hostname}"
 : "${PHONE_USER?Set PHONE_USER to Termux username, e.g. u0_a123}"
 
+SSH_IDENTITY="${SSH_IDENTITY:-${HOME}/.ssh/camper_automation_rsa}"
+SSH_PASSWORD="${SSH_PASSWORD:-${PROVISION_SSH_PASSWORD:-}}"
+SSH_ID_ARGS=()
+if [ -f "${SSH_IDENTITY}" ] && [ -z "${SSH_PASSWORD}" ]; then
+  SSH_ID_ARGS=(-i "${SSH_IDENTITY}")
+fi
+
+SSH_TRANSPORT=(ssh)
+SCP_TRANSPORT=(scp)
+SSH_AUTH_OPTS=()
+if [ -n "${SSH_PASSWORD}" ]; then
+  if ! command -v sshpass >/dev/null 2>&1; then
+    echo "ERROR: sshpass is required for password-based provisioning SSH flow." >&2
+    exit 1
+  fi
+  SSH_TRANSPORT=(sshpass -p "${SSH_PASSWORD}" ssh)
+  SCP_TRANSPORT=(sshpass -p "${SSH_PASSWORD}" scp)
+  SSH_AUTH_OPTS=(
+    -o PubkeyAuthentication=no
+    -o PreferredAuthentications=password
+    -o NumberOfPasswordPrompts=1
+  )
+fi
+
 ensure_sshd_reachable
 
 SSH_OPTS=(
+  -F /dev/null
   -p "${SSH_PORT}"
+  -o ClearAllForwardings=yes
+  -o ForwardAgent=no
   -o StrictHostKeyChecking=accept-new
   -o ControlMaster=auto
   -o ControlPersist=10m
   -o ControlPath="/tmp/cm-%C"
 )
+if [ ${#SSH_AUTH_OPTS[@]} -gt 0 ]; then
+  SSH_OPTS+=("${SSH_AUTH_OPTS[@]}")
+fi
+if [ ${#SSH_ID_ARGS[@]} -gt 0 ]; then
+  SSH_OPTS+=("${SSH_ID_ARGS[@]}")
+fi
 SCP_OPTS=(
+  -F /dev/null
   -P "${SSH_PORT}"
+  -o ClearAllForwardings=yes
+  -o ForwardAgent=no
   -o StrictHostKeyChecking=accept-new
   -o ControlMaster=auto
   -o ControlPersist=10m
   -o ControlPath="/tmp/cm-%C"
 )
+if [ ${#SSH_AUTH_OPTS[@]} -gt 0 ]; then
+  SCP_OPTS+=("${SSH_AUTH_OPTS[@]}")
+fi
+if [ ${#SSH_ID_ARGS[@]} -gt 0 ]; then
+  SCP_OPTS+=("${SSH_ID_ARGS[@]}")
+fi
 
 cleanup_ssh_mux() {
-  ssh "${SSH_OPTS[@]}" -O exit "${PHONE_USER}@${PHONE_HOST}" >/dev/null 2>&1 || true
+  "${SSH_TRANSPORT[@]}" "${SSH_OPTS[@]}" -O exit "${PHONE_USER}@${PHONE_HOST}" >/dev/null 2>&1 || true
 }
 trap cleanup_ssh_mux EXIT
 
 echo "Establishing SSH session (password should be requested once)..."
-ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'true'
+"${SSH_TRANSPORT[@]}" "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'true'
 
-ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'mkdir -p ~/scripts ~/logs ~/.termux/boot ~/.provisioning/locks'
-scp "${SCP_OPTS[@]}" "${ROOT_DIR}/boot/00-bootstrap" "${PHONE_USER}@${PHONE_HOST}:~/.termux/boot/00-bootstrap"
-scp "${SCP_OPTS[@]}" "${ROOT_DIR}/scripts/bootstrap_services.sh" "${PHONE_USER}@${PHONE_HOST}:~/scripts/bootstrap_services.sh"
-scp "${SCP_OPTS[@]}" "${ROOT_DIR}/scripts/hass.sh" "${PHONE_USER}@${PHONE_HOST}:~/scripts/hass.sh"
-scp "${SCP_OPTS[@]}" "${ROOT_DIR}/scripts/hassctl.sh" "${PHONE_USER}@${PHONE_HOST}:~/scripts/hassctl.sh"
-scp "${SCP_OPTS[@]}" "${LOCK_FILE}" "${PHONE_USER}@${PHONE_HOST}:~/.provisioning/locks/${LOCK_BASENAME}"
+"${SSH_TRANSPORT[@]}" "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'mkdir -p ~/scripts ~/logs ~/.termux/boot ~/.provisioning/locks'
+"${SCP_TRANSPORT[@]}" "${SCP_OPTS[@]}" "${ROOT_DIR}/boot/00-bootstrap" "${PHONE_USER}@${PHONE_HOST}:~/.termux/boot/00-bootstrap"
+"${SCP_TRANSPORT[@]}" "${SCP_OPTS[@]}" "${ROOT_DIR}/scripts/bootstrap_services.sh" "${PHONE_USER}@${PHONE_HOST}:~/scripts/bootstrap_services.sh"
+"${SCP_TRANSPORT[@]}" "${SCP_OPTS[@]}" "${ROOT_DIR}/scripts/hass.sh" "${PHONE_USER}@${PHONE_HOST}:~/scripts/hass.sh"
+"${SCP_TRANSPORT[@]}" "${SCP_OPTS[@]}" "${ROOT_DIR}/scripts/hassctl.sh" "${PHONE_USER}@${PHONE_HOST}:~/scripts/hassctl.sh"
+"${SCP_TRANSPORT[@]}" "${SCP_OPTS[@]}" "${ROOT_DIR}/scripts/termux-backup.sh" "${PHONE_USER}@${PHONE_HOST}:~/scripts/termux-backup.sh"
+"${SCP_TRANSPORT[@]}" "${SCP_OPTS[@]}" "${ROOT_DIR}/scripts/termux-restore.sh" "${PHONE_USER}@${PHONE_HOST}:~/scripts/termux-restore.sh"
+"${SCP_TRANSPORT[@]}" "${SCP_OPTS[@]}" "${LOCK_FILE}" "${PHONE_USER}@${PHONE_HOST}:~/.provisioning/locks/${LOCK_BASENAME}"
 
 if [ -f "${PYTHON_FREEZE_FILE}" ]; then
-  scp "${SCP_OPTS[@]}" "${PYTHON_FREEZE_FILE}" "${PHONE_USER}@${PHONE_HOST}:~/.provisioning/locks/$(basename "${PYTHON_FREEZE_FILE}")"
+  "${SCP_TRANSPORT[@]}" "${SCP_OPTS[@]}" "${PYTHON_FREEZE_FILE}" "${PHONE_USER}@${PHONE_HOST}:~/.provisioning/locks/$(basename "${PYTHON_FREEZE_FILE}")"
 fi
 
-ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'chmod 700 ~/.termux/boot/00-bootstrap ~/scripts/bootstrap_services.sh ~/scripts/hass.sh ~/scripts/hassctl.sh'
+"${SSH_TRANSPORT[@]}" "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'chmod 700 ~/.termux/boot/00-bootstrap ~/scripts/bootstrap_services.sh ~/scripts/hass.sh ~/scripts/hassctl.sh ~/scripts/termux-backup.sh ~/scripts/termux-restore.sh'
 
-ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" "LOCK_BASENAME='${LOCK_BASENAME}' HA_INSTALL_TOOL_OVERRIDE='${HA_INSTALL_TOOL}' HA_USE_FREEZE_LOCK='${HA_USE_FREEZE_LOCK}' bash -s" <<'REMOTE_INSTALL'
+"${SSH_TRANSPORT[@]}" "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" "LOCK_BASENAME='${LOCK_BASENAME}' HA_INSTALL_TOOL_OVERRIDE='${HA_INSTALL_TOOL}' HA_USE_FREEZE_LOCK='${HA_USE_FREEZE_LOCK}' bash -s" <<'REMOTE_INSTALL'
 set -euo pipefail
 cd ~
 
@@ -281,22 +325,44 @@ curl -Lf --retry 3 --retry-delay 2 -o "$ARCHIVE_PATH" "$HA_SOURCE_URL"
 printf '%s  %s\n' "$HA_SOURCE_SHA256" "$ARCHIVE_PATH" | sha256sum -c -
 tar -xzf "$ARCHIVE_PATH" -C "$SOURCE_ROOT"
 
-# Pre-populate the venv with Termux's pre-built psutil so neither pip nor uv
-# attempt a source build (Android is not supported in psutil 7.x upstream build).
+# Pre-populate the venv with Termux's pre-built psutil if available (no longer in default repos).
+# If not found, will be installed via pip below with pre-built wheel.
 SYS_SP="/data/data/com.termux/files/usr/lib/python3.13/site-packages"
 VENV_SP="$VENV/lib/python3.13/site-packages"
+_psutil_found=0
 for _path in "$SYS_SP"/psutil "$SYS_SP"/psutil-*.dist-info "$SYS_SP"/_psutil_linux*.so "$SYS_SP"/_psutil_posix*.so; do
   if [ -e "$_path" ]; then
     cp -r "$_path" "$VENV_SP/"
+    _psutil_found=1
   fi
 done
+if [ "$_psutil_found" -eq 0 ]; then
+  echo "WARNING: psutil not found in system site-packages; will install via pip."
+fi
+
 # grpcio is heavy to compile on Android; use the Termux-packaged build.
+_grpcio_found=0
 for _path in "$SYS_SP"/grpc "$SYS_SP"/grpcio-*.dist-info "$SYS_SP"/_grpc*.so; do
   if [ -e "$_path" ]; then
     cp -r "$_path" "$VENV_SP/"
+    _grpcio_found=1
   fi
 done
+
 unset _path SYS_SP VENV_SP
+
+# Attempt pip install for psutil and grpcio if not found in system packages.
+# Note: psutil requires pre-built wheels as Android is not supported in source builds.
+if [ "$_psutil_found" -eq 0 ]; then
+  echo "Attempting pip install of psutil (pre-built wheel)..."
+  "$VENV/bin/python" -m pip install --no-deps "psutil" >/dev/null 2>&1 && \
+    echo "✓ psutil installed via pip" || \
+    echo "WARNING: psutil pip install failed; Home Assistant may not start."
+fi
+if [ "$_grpcio_found" -eq 0 ]; then
+  echo "NOTE: grpcio not found in system packages; uv/pip will handle during install."
+fi
+unset _psutil_found _grpcio_found
 
 cd "$SOURCE_PATH"
 

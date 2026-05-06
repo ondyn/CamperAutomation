@@ -1,0 +1,43 @@
+sample_once:
+  name: Sample once
+  description: Run a single Termux sensor read and refresh all tilt entities.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry ID when multiple tilt entries exist.
+      required: false
+      selector:
+        text:
+
+set_zero:
+  name: Set zero
+  description: Use the current phone orientation as the new level reference.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry ID when multiple tilt entries exist.
+      required: false
+      selector:
+        text:
+
+start_sampling:
+  name: Start sampling
+  description: Enable continuous live sampling for the selected entry.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry ID when multiple tilt entries exist.
+      required: false
+      selector:
+        text:
+
+stop_sampling:
+  name: Stop sampling
+  description: Disable continuous live sampling for the selected entry.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry ID when multiple tilt entries exist.
+      required: false
+      selector:
+        text:

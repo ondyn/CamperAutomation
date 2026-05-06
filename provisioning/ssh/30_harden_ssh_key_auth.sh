@@ -90,8 +90,8 @@ SSH_KEY_PUB="${SSH_KEY_PRIV}.pub"
 
 SSH_ID_ARGS=()
 [ -f "${SSH_IDENTITY}" ] && SSH_ID_ARGS=(-i "${SSH_IDENTITY}")
-SSH_BASE=(ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "${SSH_ID_ARGS[@]}" "${PHONE_USER}@${PHONE_HOST}")
-SCP_CMD=(scp -P "${SSH_PORT}" "${SSH_ID_ARGS[@]}")
+SSH_BASE=(ssh -F /dev/null -p "${SSH_PORT}" -o ClearAllForwardings=yes -o ForwardAgent=no -o StrictHostKeyChecking=accept-new "${SSH_ID_ARGS[@]}" "${PHONE_USER}@${PHONE_HOST}")
+SCP_CMD=(scp -F /dev/null -P "${SSH_PORT}" -o ClearAllForwardings=yes -o ForwardAgent=no "${SSH_ID_ARGS[@]}")
 
 echo "=== SSH Key-Based Authentication Hardening ==="
 echo "Phone host: ${PHONE_HOST}"

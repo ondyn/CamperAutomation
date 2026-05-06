@@ -95,8 +95,8 @@ pyatv==0.17.0
 pycares==5.0.1
 pycognito==2024.5.1
 pycparser==3.0
-pydantic==2.13.3
-pydantic_core==2.46.3
+pydantic==2.13.4
+pydantic_core==2.46.4
 pymicro_vad==1.0.1
 pyroute2==0.9.6
 pyserial==3.5

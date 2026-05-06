@@ -58,11 +58,13 @@ download_to() {
 }
 
 TERMUX_URL="$(github_asset_url termux/termux-app "${TERMUX_ASSET_RE}")"
+TERMUX_API_URL="$(github_asset_url termux/termux-api "termux-api")"
 TERMUX_BOOT_URL="$(github_asset_url termux/termux-boot "termux-boot")"
 MAGISK_URL="$(github_asset_url topjohnwu/Magisk "Magisk-v")"
 HA_URL="$(github_asset_url home-assistant/android "full")"
 
 download_to "${TERMUX_URL}" "${APK_DIR}/termux.apk"
+download_to "${TERMUX_API_URL}" "${APK_DIR}/termux-api.apk"
 download_to "${TERMUX_BOOT_URL}" "${APK_DIR}/termux-boot.apk"
 download_to "${MAGISK_URL}" "${APK_DIR}/magisk.apk"
 download_to "${HA_URL}" "${APK_DIR}/home-assistant-companion.apk"

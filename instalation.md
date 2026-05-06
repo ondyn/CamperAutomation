@@ -103,6 +103,7 @@ cd /Users/ondrejhnyk/Documents/CamperAutomation
 Downloads into `provisioning/apks/`:
 
 - `termux.apk` (ABI-specific from Termux GitHub release)
+- `termux-api.apk`
 - `termux-boot.apk`
 - `magisk.apk`
 - `home-assistant-companion.apk`
@@ -124,6 +125,7 @@ cd /Users/ondrejhnyk/Documents/CamperAutomation
 Installs:
 
 - Termux
+- Termux:API
 - Termux:Boot
 - Home Assistant Companion
 
@@ -244,10 +246,46 @@ The USB orchestrator now pushes this file automatically in step `4c`.
 
 What script does:
 
+- writes deterministic APT sources for the main, root, and x11 Termux repos
 - package update/upgrade
-- install core dependencies (`openssh`, `python`, `uv`, `git`, native libs)
+- install core dependencies (`openssh`, `python`, `uv`, `git`, `termux-api`, native libs)
 - asks for `passwd` to enable SSH login
 - starts `sshd` and verifies it is running
+
+Mirror override example if the default repository host is slow:
+
+```sh
+TERMUX_MAIN_REPO=https://packages.termux.dev/apt/termux-main \
+TERMUX_ROOT_REPO=https://packages.termux.dev/apt/termux-root \
+TERMUX_X11_REPO=https://packages.termux.dev/apt/termux-x11 \
+bash ~/bootstrap_termux.sh
+```
+
+Create a full Termux + Home Assistant backup after provisioning (phone-side):
+
+```sh
+~/scripts/termux-backup.sh
+```
+
+Restore from a previous backup after reinstalling Termux (phone-side):
+
+```sh
+~/scripts/termux-restore.sh ~/storage/shared/CamperAutomationBackups/<timestamp>
+```
+
+Create a backup archive on phone and download it to laptop (default local folder: `./backup`):
+
+```sh
+cd /Users/ondrejhnyk/Documents/CamperAutomation
+PHONE_USER=<TERMUX_USER> provisioning/ssh/35_backup_termux_to_local.sh
+```
+
+Upload a local backup archive from laptop and apply restore on phone:
+
+```sh
+cd /Users/ondrejhnyk/Documents/CamperAutomation
+PHONE_USER=<TERMUX_USER> provisioning/ssh/36_restore_termux_from_local.sh ./backup/<timestamp>.tar.gz
+```
 
 Expected signal:
 

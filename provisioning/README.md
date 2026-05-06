@@ -40,6 +40,8 @@ Or run individual steps:
 2. Manual Termux bootstrap on phone (see `instalation.md`).
    - Bootstrap script is automatically pushed by `provisioning/adb/03b_push_termux_bootstrap.sh`.
    - Preferred command in Termux: `bash ~/bootstrap_termux.sh`.
+   - Bootstrap now enables `root` and `x11` repos and writes deterministic APT sources for main/root/x11 before the first `pkg update`.
+   - Override mirror URLs if needed before running bootstrap, for example: `TERMUX_MAIN_REPO=<mirror-main> TERMUX_ROOT_REPO=<mirror-root> TERMUX_X11_REPO=<mirror-x11> bash ~/bootstrap_termux.sh`.
 
 3. SSH phase (from laptop):
    - `provisioning/ssh/10_install_homeassistant_core.sh` – deploy HA core + boot scripts
@@ -49,6 +51,13 @@ Or run individual steps:
    - `provisioning/ssh/30_harden_ssh_key_auth.sh` – SSH key auth + disable password
 
 ## Notes
+
+- Phone-side backup: `~/scripts/termux-backup.sh [target-dir]`
+- Phone-side restore: `~/scripts/termux-restore.sh <backup-dir>`
+- Local backup download (single archive to `./backup` by default):
+   - `PHONE_USER=<TERMUX_USER> provisioning/ssh/35_backup_termux_to_local.sh`
+- Local restore upload + apply:
+   - `PHONE_USER=<TERMUX_USER> provisioning/ssh/36_restore_termux_from_local.sh ./backup/<timestamp>.tar.gz`
 
 - Root Xiaomi Mi11: <https://droidwin.com/how-to-root-xiaomi-eu-rom-via-magisk/>
 - SSH via Tailscale: ssh -p 8022 u0_a284@<tailscale-ip>

@@ -63,14 +63,47 @@ fi
 
 SSH_PORT="${SSH_PORT:-8022}"
 SSH_IDENTITY="${SSH_IDENTITY:-${HOME}/.ssh/camper_automation_rsa}"
+SSH_PASSWORD="${SSH_PASSWORD:-${PROVISION_SSH_PASSWORD:-}}"
 SSH_ID_ARGS=()
-[ -f "${SSH_IDENTITY}" ] && SSH_ID_ARGS=(-i "${SSH_IDENTITY}")
-SSH_BASE=(ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "${SSH_ID_ARGS[@]}" "${PHONE_USER}@${PHONE_HOST}")
+if [ -f "${SSH_IDENTITY}" ] && [ -z "${SSH_PASSWORD}" ]; then
+  SSH_ID_ARGS=(-i "${SSH_IDENTITY}")
+fi
+
+SSH_TRANSPORT=(ssh)
+SSH_AUTH_OPTS=()
+if [ -n "${SSH_PASSWORD}" ]; then
+  if ! command -v sshpass >/dev/null 2>&1; then
+    echo "ERROR: sshpass is required for password-based provisioning SSH flow." >&2
+    exit 1
+  fi
+  SSH_TRANSPORT=(sshpass -p "${SSH_PASSWORD}" ssh)
+  SSH_AUTH_OPTS=(
+    -o PubkeyAuthentication=no
+    -o PreferredAuthentications=password
+    -o NumberOfPasswordPrompts=1
+  )
+fi
+
+SSH_BASE=("${SSH_TRANSPORT[@]}" -F /dev/null -p "${SSH_PORT}" -o ClearAllForwardings=yes -o ForwardAgent=no -o StrictHostKeyChecking=accept-new)
+if [ ${#SSH_AUTH_OPTS[@]} -gt 0 ]; then
+  SSH_BASE+=("${SSH_AUTH_OPTS[@]}")
+fi
+if [ ${#SSH_ID_ARGS[@]} -gt 0 ]; then
+  SSH_BASE+=("${SSH_ID_ARGS[@]}")
+fi
+SSH_BASE+=("${PHONE_USER}@${PHONE_HOST}")
 
 echo "Installing HACS on ${PHONE_USER}@${PHONE_HOST}:${SSH_PORT}..."
 
-"${SSH_BASE[@]}" 'bash -s' <<'REMOTE_INSTALL'
+"${SSH_BASE[@]}" 'env -u BASH_ENV -u ENV /data/data/com.termux/files/usr/bin/bash -s' <<'REMOTE_INSTALL'
 set -euo pipefail
+
+# Guard against host/ssh exported shell env causing bash startup failures.
+unset BASH_ENV ENV
+PREFIX="/data/data/com.termux/files/usr"
+PATH="${PREFIX}/bin:/system/bin"
+SHELL="${PREFIX}/bin/bash"
+export PREFIX PATH SHELL
 
 ROOT_HA_CONFIG="$HOME/.suroot/.homeassistant"
 USER_HA_CONFIG="$HOME/.homeassistant"

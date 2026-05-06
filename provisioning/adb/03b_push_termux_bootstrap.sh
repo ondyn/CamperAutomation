@@ -16,10 +16,28 @@ fi
 
 adb wait-for-device
 
+TERMUX_BASE_PATH="$(adb shell run-as com.termux pwd 2>/dev/null | tr -d '\r' | head -n1 || true)"
+if [ -z "${TERMUX_BASE_PATH}" ]; then
+  TERMUX_BASE_PATH="/data/data/com.termux"
+fi
+TERMUX_HOME_PATH="${TERMUX_BASE_PATH}/files/home"
+TERMUX_BASH_PATH="${TERMUX_BASE_PATH}/files/usr/bin/bash"
+
+if ! adb shell "run-as com.termux test -x '${TERMUX_BASH_PATH}'" >/dev/null 2>&1; then
+  echo "Termux runtime not initialized yet. Launching Termux and waiting for first-run extraction..."
+  adb shell monkey -p com.termux -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
+  for _i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    if adb shell "run-as com.termux test -x '${TERMUX_BASH_PATH}'" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+fi
+
 echo "Writing bootstrap script into Termux home (preferred path)..."
-if adb shell "run-as com.termux sh -c 'cat > /data/data/com.termux/files/home/bootstrap_termux.sh && chmod 700 /data/data/com.termux/files/home/bootstrap_termux.sh'" < "${LOCAL_SCRIPT}"; then
-  echo "✓ Wrote /data/data/com.termux/files/home/bootstrap_termux.sh"
-  adb shell "run-as com.termux ls -l /data/data/com.termux/files/home/bootstrap_termux.sh" | tr -d '\r'
+if adb shell "run-as com.termux sh -c 'mkdir -p files/home && cat > files/home/bootstrap_termux.sh && chmod 700 files/home/bootstrap_termux.sh'" < "${LOCAL_SCRIPT}"; then
+  echo "✓ Wrote ${TERMUX_HOME_PATH}/bootstrap_termux.sh"
+  adb shell "run-as com.termux ls -l '${TERMUX_HOME_PATH}/bootstrap_termux.sh'" | tr -d '\r'
 else
   echo "WARNING: Could not write directly into Termux home via run-as."
   echo "         Falling back to shared storage paths only."
@@ -41,7 +59,7 @@ echo "Verifying pushed files..."
 adb shell "ls -l /sdcard/Download/bootstrap_termux.sh" | tr -d '\r'
 adb shell "ls -l /sdcard/Downloads/bootstrap_termux.sh" | tr -d '\r' || true
 echo "Version marker from Termux-home copy:"
-adb shell "run-as com.termux sh -lc 'grep -n BOOTSTRAP_VERSION /data/data/com.termux/files/home/bootstrap_termux.sh | head -n1'" | tr -d '\r' || true
+adb shell "run-as com.termux sh -c 'grep -n BOOTSTRAP_VERSION files/home/bootstrap_termux.sh | head -n1'" | tr -d '\r' || true
 
 cat <<EOF
 Bootstrap script has been delivered.
@@ -53,7 +71,7 @@ In Termux, run:
   bash ~/bootstrap_termux.sh
 
 Alternate explicit path:
-  bash /data/data/com.termux/files/home/bootstrap_termux.sh
+  bash ${TERMUX_HOME_PATH}/bootstrap_termux.sh
 
 Shared-storage fallback after termux-setup-storage:
   bash ~/storage/downloads/bootstrap_termux.sh

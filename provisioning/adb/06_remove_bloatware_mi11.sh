@@ -127,7 +127,7 @@ com.mi.android.globalFileexplorer
 EOF
 
 # Remove all third-party packages except required apps.
-KEEP_3P='^(com\.termux|com\.termux\.boot|io\.homeassistant\.companion\.android|com\.topjohnwu\.magisk)$'
+KEEP_3P='^(com\.termux|com\.termux\.boot|com\.termux\.api|io\.homeassistant\.companion\.android|com\.topjohnwu\.magisk)$'
 
 # Never remove core settings/security packages even if they appear as third-party/updated apps.
 PROTECTED_PKGS='^(com\.android\.settings|com\.android\.settings\..*|com\.android\.permissioncontroller|com\.google\.android\.packageinstaller|com\.miui\.securitycenter|com\.miui\.securitycore|com\.lbe\.security\.miui|com\.miui\.securityadd|com\.xiaomi\.account|com\.xiaomi\.finddevice)$'

@@ -18,3 +18,9 @@ archive/
 # Provisioning logs and downloaded APKs
 provisioning/logs/
 provisioning/apks/*.apk
+
+# Local backup archives
+backup/
+
+
+__pycache__

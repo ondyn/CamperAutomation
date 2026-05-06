@@ -19,6 +19,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SSH_PORT="${SSH_PORT:-8022}"
 AUTHKEY=""
+SSH_PASSWORD="${SSH_PASSWORD:-${PROVISION_SSH_PASSWORD:-}}"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -104,20 +105,39 @@ fi
 # --------------------------------------------------------------------------
 
 SSH_OPTS=(
+  -F /dev/null
   -p "${SSH_PORT}"
+  -o ClearAllForwardings=yes
+  -o ForwardAgent=no
   -o StrictHostKeyChecking=accept-new
   -o ControlMaster=auto
   -o ControlPersist=10m
   -o ControlPath="/tmp/cm-tailscale-%C"
+  -o ServerAliveInterval=10
+  -o ServerAliveCountMax=6
 )
 
+SSH_TRANSPORT=(ssh)
+if [ -n "${SSH_PASSWORD}" ]; then
+  if ! command -v sshpass >/dev/null 2>&1; then
+    echo "ERROR: sshpass is required for password-based provisioning SSH flow." >&2
+    exit 1
+  fi
+  SSH_TRANSPORT=(sshpass -p "${SSH_PASSWORD}" ssh)
+  SSH_OPTS+=(
+    -o PubkeyAuthentication=no
+    -o PreferredAuthentications=password
+    -o NumberOfPasswordPrompts=1
+  )
+fi
+
 cleanup_ssh_mux() {
-  ssh "${SSH_OPTS[@]}" -O exit "${PHONE_USER}@${PHONE_HOST}" >/dev/null 2>&1 || true
+  "${SSH_TRANSPORT[@]}" "${SSH_OPTS[@]}" -O exit "${PHONE_USER}@${PHONE_HOST}" >/dev/null 2>&1 || true
 }
 trap cleanup_ssh_mux EXIT
 
 echo "Connecting to ${PHONE_USER}@${PHONE_HOST}:${SSH_PORT}..."
-ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'true'
+"${SSH_TRANSPORT[@]}" "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'true'
 
 # --------------------------------------------------------------------------
 # Remote installation
@@ -126,7 +146,7 @@ ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'true'
 # to avoid any risk of shell injection via key characters.
 # --------------------------------------------------------------------------
 
-ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" \
+"${SSH_TRANSPORT[@]}" "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" \
   "TAILSCALE_AUTHKEY=$(printf '%s' "${AUTHKEY}" | base64) bash -s" <<'REMOTE_SETUP'
 set -euo pipefail
 
@@ -188,38 +208,109 @@ if [ -x "${TAILSCALED_BIN}" ] && [ -x "${TAILSCALE_BIN}" ]; then
   if [ -n "${INSTALLED_VERSION}" ]; then
     echo "Tailscale ${INSTALLED_VERSION} already installed at ${VPN_DIR} — skipping download"
     SKIP_DOWNLOAD=1
+  elif [ -S "${TAILSCALE_SOCKET}" ] || pgrep -x tailscaled >/dev/null 2>&1; then
+    echo "tailscaled already running (socket present) — skipping download"
+    SKIP_DOWNLOAD=1
   fi
 fi
 SKIP_DOWNLOAD="${SKIP_DOWNLOAD:-0}"
 
 # --------------------------------------------------------------------------
-# Download latest stable tarball
+# Download static binaries from Tailscale official repository
+# For Android/Termux, we download the static PIE binaries directly
 # --------------------------------------------------------------------------
 if [ "${SKIP_DOWNLOAD}" = "0" ]; then
+  # Stop any running tailscaled first to avoid 'Text file busy' when overwriting the binary
+  if [ -S "${TAILSCALE_SOCKET}" ] || pgrep -x tailscaled >/dev/null 2>&1; then
+    echo "Stopping running tailscaled before binary update..."
+    if [ "${HAS_ROOT}" = "1" ]; then
+      su -c 'pkill tailscaled 2>/dev/null || kill $(pgrep tailscaled 2>/dev/null) 2>/dev/null || true' >/dev/null 2>&1 || true
+    else
+      pkill tailscaled >/dev/null 2>&1 || true
+    fi
+    rm -f "${TAILSCALE_SOCKET}"
+    sleep 2
+  fi
+
   echo "Fetching latest Tailscale release info..."
   TS_META=$(curl -sf --retry 3 --retry-delay 2 "https://pkgs.tailscale.com/stable/?mode=json")
-  TS_TARBALL=$(printf '%s' "${TS_META}" | python3 -c \
-    "import json,sys; d=json.load(sys.stdin); print(d['Tarballs']['${TS_ARCH}'])")
   TS_VERSION=$(printf '%s' "${TS_META}" | python3 -c \
     "import json,sys; d=json.load(sys.stdin); print(d['Tarballs']['${TS_ARCH}'].split('_')[1])")
-  DOWNLOAD_URL="https://pkgs.tailscale.com/stable/${TS_TARBALL}"
-  TARBALL_PATH="${CACHE_DIR}/${TS_TARBALL}"
+  
+  echo "Tailscale version: ${TS_VERSION}"
 
-  echo "Downloading Tailscale ${TS_VERSION} (${TS_ARCH})..."
-  curl -Lf --retry 3 --retry-delay 2 -o "${TARBALL_PATH}" "${DOWNLOAD_URL}"
+  # Try installing via Termux package manager first (more reliable for PIE binaries)
+  echo "Attempting to install via Termux package manager..."
+  if pkg install -y tailscale >/dev/null 2>&1; then
+    echo "✓ Tailscale installed via package manager"
+    # Copy binaries to ~/vpn/ for consistency
+    mkdir -p ~/vpn
+    cp "$PREFIX/bin/tailscaled" ~/vpn/tailscaled
+    cp "$PREFIX/bin/tailscale" ~/vpn/tailscale
+    chmod +x ~/vpn/tail*
+  else
+    echo "Package manager unavailable, downloading static binaries..."
+    # Map architecture to Tailscale download naming convention
+    case "${TS_ARCH}" in
+      arm64)   DL_ARCH="arm64" ;;
+      arm)     DL_ARCH="arm" ;;
+      amd64)   DL_ARCH="amd64" ;;
+      386)     DL_ARCH="386" ;;
+      *)
+        echo "ERROR: Tailscale does not support architecture: ${TS_ARCH}" >&2
+        exit 1
+        ;;
+    esac
 
-  echo "Extracting binaries..."
-  EXTRACT_DIR="${CACHE_DIR}/extract"
-  rm -rf "${EXTRACT_DIR}"
-  mkdir -p "${EXTRACT_DIR}"
-  tar -xzf "${TARBALL_PATH}" -C "${EXTRACT_DIR}" --strip-components=1
+    mkdir -p "${CACHE_DIR}"
+    
+    # Download from Tailscale official pkgs.tailscale.com
+    # As of 2024, these are typically statically-linked but may not be PIE
+    TS_TARBALL=$(printf '%s' "${TS_META}" | python3 -c \
+      "import json,sys; d=json.load(sys.stdin); print(d['Tarballs']['${TS_ARCH}'])")
+    DOWNLOAD_URL="https://pkgs.tailscale.com/stable/${TS_TARBALL}"
+    TARBALL_PATH="${CACHE_DIR}/${TS_TARBALL}"
 
-  # Copy binaries to ~/vpn/
-  cp "${EXTRACT_DIR}/tailscaled" "${TAILSCALED_BIN}"
-  cp "${EXTRACT_DIR}/tailscale"  "${TAILSCALE_BIN}"
-  chmod +x "${TAILSCALED_BIN}" "${TAILSCALE_BIN}"
-  rm -rf "${EXTRACT_DIR}"
-  echo "Installed: ${TAILSCALED_BIN} and ${TAILSCALE_BIN}"
+    echo "Downloading from: ${DOWNLOAD_URL}"
+    curl -Lf --retry 3 --retry-delay 2 -o "${TARBALL_PATH}" "${DOWNLOAD_URL}"
+
+    echo "Extracting binaries..."
+    EXTRACT_DIR="${CACHE_DIR}/extract"
+    rm -rf "${EXTRACT_DIR}"
+    mkdir -p "${EXTRACT_DIR}"
+    tar -xzf "${TARBALL_PATH}" -C "${EXTRACT_DIR}" --strip-components=1
+
+    # Copy binaries locally to ~/vpn/
+    mkdir -p ~/vpn
+    cp "${EXTRACT_DIR}/tailscaled" ~/vpn/tailscaled
+    cp "${EXTRACT_DIR}/tailscale"  ~/vpn/tailscale
+    chmod +x ~/vpn/tailscaled ~/vpn/tailscale
+    
+    rm -rf "${EXTRACT_DIR}"
+    echo "Installed: ~/vpn/tailscaled and ~/vpn/tailscale (via tarball)"
+  fi
+  
+  # Verify binaries are valid ELF executables (tailscaled daemon won't respond to -version)
+  echo "Verifying binary integrity..."
+  
+  TAILSCALED_INFO=$(file "${TAILSCALED_BIN}" 2>/dev/null || echo "")
+  TAILSCALE_INFO=$(file "${TAILSCALE_BIN}" 2>/dev/null || echo "")
+  
+  if ! echo "${TAILSCALED_INFO}" | grep -q "ELF.*executable"; then
+    echo "ERROR: tailscaled binary appears to be corrupted or wrong type" >&2
+    echo "       File info: ${TAILSCALED_INFO}" >&2
+    exit 1
+  fi
+  
+  if ! echo "${TAILSCALE_INFO}" | grep -q "ELF.*executable"; then
+    echo "ERROR: tailscale binary appears to be corrupted or wrong type" >&2
+    echo "       File info: ${TAILSCALE_INFO}" >&2
+    exit 1
+  fi
+  
+  echo "✓ Binary integrity verified"
+  echo "  tailscaled: ${TAILSCALED_INFO}"
+  echo "  tailscale:  ${TAILSCALE_INFO}"
 fi
 
 # --------------------------------------------------------------------------
@@ -255,10 +346,32 @@ else
     sleep 1
   done
   if [ ! -S "${TAILSCALE_SOCKET}" ]; then
-    echo "ERROR: tailscaled socket did not appear after 20s" >&2
-    echo "Check: cat ${HOME}/logs/tailscaled.log" >&2
-    cat "${HOME}/logs/tailscaled.log" >&2 || true
-    exit 1
+    # Check for PIE/ELF compatibility issue
+    if grep -q "unexpected e_type: 2" "${HOME}/logs/tailscaled.log" 2>/dev/null; then
+      echo ""
+      echo "=========================================================="
+      echo "⚠  VPN SETUP INCOMPLETE - Non-PIE Binary"
+      echo "=========================================================="
+      echo ""
+      echo "The Tailscale binary on this device is non-PIE, which"
+      echo "requires Android root access (Magisk) to run."
+      echo ""
+      echo "Next steps to fix this:"
+      echo "  1. Ensure Magisk is installed on your device"
+      echo "  2. grant Termux root access in Magisk Manager"
+      echo "  3. Rerun the provisioning script"
+      echo ""
+      echo "For now, you can still access Home Assistant via:"
+      echo "  • ADB port forward: adb forward tcp:8123 tcp:8123"
+      echo "  • Direct LAN if on same network"
+      echo ""
+      echo "Proceeding with remaining provisioning steps..."
+    else
+      echo "ERROR: tailscaled socket did not appear after 20s" >&2
+      echo "Check: cat ${HOME}/logs/tailscaled.log" >&2
+      cat "${HOME}/logs/tailscaled.log" >&2 || true
+      exit 1
+    fi
   fi
 
   # Make socket world-rw so Termux user can run tailscale CLI without root.
@@ -268,99 +381,188 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# Set tailscale operator so Termux user can run tailscale CLI without root
-# after provisioning (e.g. manual status checks). Persisted in state file.
-# --------------------------------------------------------------------------
-if [ "${HAS_ROOT}" = "1" ]; then
-  CURRENT_USER="$(id -nu 2>/dev/null || true)"
-  if [ -n "${CURRENT_USER}" ]; then
-    su -c "${TAILSCALE_BIN} --socket ${TAILSCALE_SOCKET} set --operator=${CURRENT_USER}" >/dev/null 2>&1 \
-      && echo "Set tailscale operator to ${CURRENT_USER}" \
-      || echo "(tailscale set --operator may not be supported in this version)"
-  fi
-fi
-
-# --------------------------------------------------------------------------
 # Check if already authenticated
 # --------------------------------------------------------------------------
-TS_STATUS=$("${TAILSCALE_BIN}" --socket "${TAILSCALE_SOCKET}" status --json 2>/dev/null || echo '{}')
+check_tailscale_auth() {
+  "${TAILSCALE_BIN}" --socket "${TAILSCALE_SOCKET}" status --json 2>/dev/null || echo '{}'
+}
+
+TS_STATUS=$(check_tailscale_auth)
 BACKEND_STATE=$(printf '%s' "${TS_STATUS}" | python3 -c \
   "import json,sys; d=json.load(sys.stdin); print(d.get('BackendState','Unknown'))" 2>/dev/null || echo "Unknown")
 
 echo "Tailscale backend state: ${BACKEND_STATE}"
 
 if [ "${BACKEND_STATE}" = "Running" ]; then
-  echo "Tailscale is already authenticated and connected."
+  echo "✓ Tailscale is already authenticated and connected."
 elif [ -n "${AUTHKEY}" ]; then
   # --------------------------------------------------------------------------
   # Authenticate with pre-auth key (non-interactive).
   # Must run via su when tailscaled is root-owned (Android netlinkrib workaround).
   # Note: auth key briefly visible in device process list; rotate key after setup.
   # --------------------------------------------------------------------------
-  echo "Authenticating with auth key..."
+  echo "Authenticating with provided auth key..."
   if [ "${HAS_ROOT}" = "1" ]; then
-    su -c "${TAILSCALE_BIN} --socket ${TAILSCALE_SOCKET} up --authkey=${AUTHKEY} --accept-dns=false --accept-routes"
+    su -c "${TAILSCALE_BIN} --socket ${TAILSCALE_SOCKET} up --authkey=${AUTHKEY} --accept-dns=false --accept-routes" >/dev/null 2>&1
   else
     "${TAILSCALE_BIN}" --socket "${TAILSCALE_SOCKET}" up \
       --authkey="${AUTHKEY}" \
       --accept-dns=false \
-      --accept-routes
+      --accept-routes >/dev/null 2>&1 || true
   fi
-  echo "Authentication with auth key complete."
+  
+  # Wait for authentication to complete
+  sleep 2
+  TS_STATUS=$(check_tailscale_auth)
+  BACKEND_STATE=$(printf '%s' "${TS_STATUS}" | python3 -c \
+    "import json,sys; d=json.load(sys.stdin); print(d.get('BackendState','Unknown'))" 2>/dev/null || echo "Unknown")
+  
+  if [ "${BACKEND_STATE}" = "Running" ]; then
+    echo "✓ Successfully authenticated with auth key"
+  else
+    echo "WARNING: Auth key authentication may not have completed. State: ${BACKEND_STATE}"
+  fi
 else
   # --------------------------------------------------------------------------
-  # Interactive browser-based auth.
-  # Run tailscale up in the foreground — the auth URL prints directly to the
-  # terminal. Script blocks here until you complete login in the browser.
+  # Interactive browser-based auth (first-time setup).
+  # Show auth URL and wait for browser confirmation before continuing.
   # Must run via su when tailscaled is root-owned.
   # --------------------------------------------------------------------------
   echo ""
   echo "=========================================================="
   echo "  TAILSCALE AUTHENTICATION REQUIRED"
-  echo "  The auth URL will appear on the next line."
-  echo "  Open it in a browser, log in, and this script will continue."
   echo "=========================================================="
+  echo ""
+  
+  # Run tailscale up in the background so it prints the auth URL immediately
+  # and releases the SSH session. The blocking wait-for-browser is replaced
+  # by the polling loop below.
+  AUTH_OUTPUT=$(mktemp)
   if [ "${HAS_ROOT}" = "1" ]; then
-    su -c "${TAILSCALE_BIN} --socket ${TAILSCALE_SOCKET} up --accept-dns=false --accept-routes" || true
+    su -c "${TAILSCALE_BIN} --socket ${TAILSCALE_SOCKET} up --accept-dns=false --accept-routes" >"${AUTH_OUTPUT}" 2>&1 &
   else
     "${TAILSCALE_BIN}" --socket "${TAILSCALE_SOCKET}" up \
       --accept-dns=false \
-      --accept-routes || true
+      --accept-routes >"${AUTH_OUTPUT}" 2>&1 &
   fi
-  echo "tailscale up completed."
-fi
+  UP_PID=$!
+  # Give tailscale up a few seconds to print the auth URL then kill it;
+  # authentication state is tracked via `tailscale status` polling below.
+  sleep 5
+  kill "${UP_PID}" 2>/dev/null || true
+  wait "${UP_PID}" 2>/dev/null || true
+  
+  # Check if authentication succeeded immediately (Success message in output)
+  if grep -q "Success" "${AUTH_OUTPUT}" 2>/dev/null; then
+    # Authentication was immediate - daemon already authenticated
+    echo ""
+    echo "✓ Tailscale authenticated successfully!"
+    rm -f "${AUTH_OUTPUT}"
+  else
+    # Authentication requires browser - show URL and wait for confirmation
+    AUTH_URL=$(grep -oP 'https://[^ ]+' "${AUTH_OUTPUT}" | head -1 || true)
+    rm -f "${AUTH_OUTPUT}"
+    
+    if [ -n "${AUTH_URL}" ]; then
+      echo ""
+      echo "=========================================================="
+      echo "AUTHENTICATION URL:"
+      echo "${AUTH_URL}"
+      echo "=========================================================="
+      echo ""
+      echo "1. Copy the URL above and open it in your browser"
+      echo "2. Log in with your Tailscale account"
+      echo "3. Approve the device"
+      echo ""
+      
+      # Poll for authentication completion (up to 60 seconds)
+      echo "Waiting for browser authentication..."
+      POLL_COUNT=0
+      MAX_POLLS=60
+      
+      while [ ${POLL_COUNT} -lt ${MAX_POLLS} ]; do
+        sleep 1
+        TS_STATUS=$(check_tailscale_auth)
+        BACKEND_STATE=$(printf '%s' "${TS_STATUS}" | python3 -c \
+          "import json,sys; d=json.load(sys.stdin); print(d.get('BackendState','Unknown'))" 2>/dev/null || echo "Unknown")
+        
+        if [ "${BACKEND_STATE}" = "Running" ]; then
+          echo "✓ Authentication confirmed from browser!"
+          break
+        fi
+        
+        POLL_COUNT=$((POLL_COUNT + 1))
+        if [ $((POLL_COUNT % 10)) -eq 0 ]; then
+          echo "  Still waiting... (${POLL_COUNT}s elapsed)"
+        fi
+      done
+      
+      if [ "${BACKEND_STATE}" != "Running" ]; then
+        echo "⚠ Authentication not confirmed after ${MAX_POLLS}s"
+        echo "  Check the log: tail -f ~/logs/tailscaled.log"
+      fi
+    else
+      echo "⚠ Could not extract authentication URL from output"
+      echo "  Try running manually:"
+      echo "  ${TAILSCALE_BIN} --socket ${TAILSCALE_SOCKET} up"
+      fi
+    fi
+  fi
 
-# --------------------------------------------------------------------------
-# Final status
-# --------------------------------------------------------------------------
-echo ""
-echo "--- Tailscale status ---"
-"${TAILSCALE_BIN}" --socket "${TAILSCALE_SOCKET}" status || true
-echo "--- end status ---"
-echo ""
+  # --------------------------------------------------------------------------
+  # Set tailscale operator so Termux user can run tailscale CLI without root
+  # after provisioning (e.g. manual status checks). Only run after auth succeeds.
+  # --------------------------------------------------------------------------
+  if [ "${HAS_ROOT}" = "1" ]; then
+    CURRENT_USER="$(id -nu 2>/dev/null || true)"
+    if [ -n "${CURRENT_USER}" ]; then
+      su -c "${TAILSCALE_BIN} --socket ${TAILSCALE_SOCKET} set --operator=${CURRENT_USER}" >/dev/null 2>&1 \
+        && echo "Set tailscale operator to ${CURRENT_USER}" \
+        || echo "(tailscale set --operator may not be supported or auth incomplete)"
+    fi
+  fi
 
-FINAL_STATE=$("${TAILSCALE_BIN}" --socket "${TAILSCALE_SOCKET}" status --json 2>/dev/null \
-  | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('BackendState','Unknown'))" \
-  2>/dev/null || echo "Unknown")
-
-TAILSCALE_IP=$("${TAILSCALE_BIN}" --socket "${TAILSCALE_SOCKET}" ip -4 2>/dev/null | head -1 || true)
-
-if [ "${FINAL_STATE}" = "Running" ]; then
-  echo "Tailscale is connected."
-  echo "Tailscale IPv4: ${TAILSCALE_IP:-<not yet assigned>}"
+  # --------------------------------------------------------------------------
+  # Final status report
+  # --------------------------------------------------------------------------
   echo ""
-  echo "Home Assistant Companion connection URL (when on Tailscale):"
-  echo "  http://${TAILSCALE_IP:-<tailscale-ip>}:8123"
-else
-  echo "WARNING: Tailscale state is '${FINAL_STATE}'."
-  echo "If auth URL was shown above, complete browser auth then rerun this script or run on phone:"
-  echo "  ~/vpn/tailscale --socket \$PREFIX/var/run/tailscale/tailscaled.sock status"
-fi
+  echo "=========================================================="
+  echo "Final Tailscale Status:"
+  echo "=========================================================="
 
-echo ""
-echo "Tailscale will auto-start on next boot via ~/scripts/bootstrap_services.sh."
-echo "To check after reboot: ssh -p 8022 ... 'cat ~/logs/bootstrap.log | grep VPN'"
+  if [ "${HAS_ROOT}" = "1" ]; then
+    su -c "${TAILSCALE_BIN} --socket ${TAILSCALE_SOCKET} status" || true
+  else
+    "${TAILSCALE_BIN}" --socket "${TAILSCALE_SOCKET}" status || true
+  fi
+
+  FINAL_STATE=$("${TAILSCALE_BIN}" --socket "${TAILSCALE_SOCKET}" status --json 2>/dev/null \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('BackendState','Unknown'))" \
+    2>/dev/null || echo "Unknown")
+
+  TAILSCALE_IP=$("${TAILSCALE_BIN}" --socket "${TAILSCALE_SOCKET}" ip -4 2>/dev/null | head -1 || true)
+
+  echo ""
+  if [ "${FINAL_STATE}" = "Running" ] && [ -n "${TAILSCALE_IP}" ]; then
+    echo "✓ Tailscale is connected!"
+    echo "  Tailscale IPv4: ${TAILSCALE_IP}"
+    echo ""
+    echo "  Home Assistant Companion URL:"
+    echo "  http://${TAILSCALE_IP}:8123"
+  else
+    echo "⚠ Tailscale state: ${FINAL_STATE}"
+    if [ -z "${TAILSCALE_IP}" ]; then
+      echo "  (IP address not yet assigned)"
+    fi
+    echo ""
+    echo "  To check status: ${TAILSCALE_BIN} --socket \$PREFIX/var/run/tailscale/tailscaled.sock status"
+    echo "  To view logs: tail -f ~/logs/tailscaled.log"
+  fi
+
+  echo ""
+  echo "Tailscale will auto-start on next boot via ~/scripts/bootstrap_services.sh."
+  echo "To check after reboot: ssh -p 8022 ... 'cat ~/logs/bootstrap.log | grep VPN'"
+  echo ""
+  echo "Setup script completed. Check output above for Tailscale status and IP."
+
 REMOTE_SETUP
-
-echo ""
-echo "Setup script completed. Check output above for Tailscale status and IP."

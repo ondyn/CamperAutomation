@@ -113,6 +113,32 @@ Recovery:
 - Reduce high-frequency sensors and automation loops.
 - Lower noisy debug logging once root cause is known.
 
+## P1: Tilt Meter Unavailable
+
+Symptoms:
+
+- `termux_tilt` entities show unavailable.
+- Home Assistant log reports `termux-sensor failed` or `accelerometer data was not present`.
+
+Checks:
+
+```sh
+command -v termux-sensor
+dpkg-query -W -f='${Package} ${Version}\n' termux-api
+pm list packages | grep com.termux.api
+```
+
+Recovery:
+
+- Install or reinstall the Android app `Termux:API`.
+- In Termux, run `pkg install termux-api`.
+- Restart Home Assistant after both layers are present.
+
+Success signal:
+
+- `command -v termux-sensor` returns a path.
+- `termux_tilt` sensors update after `button.sample_once` or `termux_tilt.sample_once`.
+
 ## Package / Install Failures (pip, uv, native wheels)
 
 Checks:

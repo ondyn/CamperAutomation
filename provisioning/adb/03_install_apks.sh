@@ -32,6 +32,7 @@ install_apk() {
 }
 
 install_apk "${APK_DIR}/termux.apk" "Termux"
+install_apk "${APK_DIR}/termux-api.apk" "Termux:API"
 install_apk "${APK_DIR}/termux-boot.apk" "Termux:Boot"
 install_apk "${APK_DIR}/home-assistant-companion.apk" "Home Assistant Companion"
 

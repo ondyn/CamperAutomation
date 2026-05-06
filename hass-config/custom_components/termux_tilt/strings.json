@@ -1,0 +1,29 @@
+{
+  "config": {
+    "abort": {
+      "single_instance_allowed": "Only one Termux Tilt Meter entry is supported."
+    },
+    "step": {
+      "user": {
+        "title": "Add Termux Tilt Meter",
+        "description": "Configure how tilt sampling should be activated.",
+        "data": {
+          "name": "Name",
+          "activation_entity_id": "Activation entity ID",
+          "activation_state": "Activation state"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Termux Tilt Meter options",
+        "data": {
+          "activation_entity_id": "Activation entity ID",
+          "activation_state": "Activation state"
+        }
+      }
+    }
+  }
+}
