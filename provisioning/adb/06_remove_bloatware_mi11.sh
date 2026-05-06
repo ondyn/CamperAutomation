@@ -97,6 +97,7 @@ com.google.android.apps.newsstand
 com.google.android.apps.news
 com.google.android.apps.photos
 com.google.android.apps.podcasts
+com.google.android.apps.safetyhub
 com.google.android.apps.tachyon
 com.google.android.apps.meetings
 com.google.android.apps.meet

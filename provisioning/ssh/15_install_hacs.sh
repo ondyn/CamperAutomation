@@ -62,7 +62,10 @@ fi
 : "${PHONE_USER:?Set PHONE_USER}"
 
 SSH_PORT="${SSH_PORT:-8022}"
-SSH_BASE=(ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "${PHONE_USER}@${PHONE_HOST}")
+SSH_IDENTITY="${SSH_IDENTITY:-${HOME}/.ssh/camper_automation_rsa}"
+SSH_ID_ARGS=()
+[ -f "${SSH_IDENTITY}" ] && SSH_ID_ARGS=(-i "${SSH_IDENTITY}")
+SSH_BASE=(ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "${SSH_ID_ARGS[@]}" "${PHONE_USER}@${PHONE_HOST}")
 
 echo "Installing HACS on ${PHONE_USER}@${PHONE_HOST}:${SSH_PORT}..."
 
@@ -85,11 +88,35 @@ echo "Using Home Assistant config: $HASS_CONFIG_DIR"
 
 if ! command -v curl >/dev/null 2>&1; then
   echo "Installing curl in Termux..."
-  pkg install -y curl >/dev/null
+  pkg install -y curl
+fi
+
+if ! command -v wget >/dev/null 2>&1; then
+  echo "Installing wget in Termux (required by HACS installer)..."
+  pkg install -y wget
+fi
+
+if ! command -v unzip >/dev/null 2>&1; then
+  echo "Installing unzip in Termux (required by HACS installer)..."
+  pkg install -y unzip
 fi
 
 if [ -d "$HASS_CONFIG_DIR/custom_components/hacs" ]; then
   echo "Existing HACS installation detected; reinstalling latest release."
+fi
+
+# HACS installer requires a configuration.yaml to recognise this as an HA config dir
+if [ ! -f "$HASS_CONFIG_DIR/configuration.yaml" ]; then
+  echo "Creating stub configuration.yaml so HACS installer can detect the config dir..."
+  echo "# Home Assistant configuration" > "$HASS_CONFIG_DIR/configuration.yaml"
+fi
+
+# HACS installer detects HA config dir via .HA_VERSION file
+if [ ! -f "$HASS_CONFIG_DIR/.HA_VERSION" ]; then
+  echo "Creating .HA_VERSION marker so HACS installer can detect the config dir..."
+  # Get installed HA version from venv
+  HA_VER=$("$HOME/.venv/bin/python" -c 'import homeassistant.const as c; print(c.__version__)' 2>/dev/null || echo "2026.2.3")
+  echo "$HA_VER" > "$HASS_CONFIG_DIR/.HA_VERSION"
 fi
 
 cd "$HASS_CONFIG_DIR"

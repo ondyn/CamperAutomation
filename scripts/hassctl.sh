@@ -22,20 +22,48 @@ log() {
   printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >>"${RUN_LOG}"
 }
 
+detect_default_gateway() {
+  local gateway
+  gateway=""
+
+  if command -v ip >/dev/null 2>&1; then
+    gateway="$(ip route 2>/dev/null | awk '/^default /{for(i=1;i<=NF;i++) if($i=="via") {print $(i+1); exit}}' || true)"
+  fi
+  if [ -z "${gateway}" ] && [ -x /system/bin/ip ]; then
+    gateway="$(/system/bin/ip route 2>/dev/null | awk '/^default /{for(i=1;i<=NF;i++) if($i=="via") {print $(i+1); exit}}' || true)"
+  fi
+  if [ -z "${gateway}" ] && command -v python3 >/dev/null 2>&1; then
+    gateway="$(python3 -c "import socket,struct; gw='';
+for line in open('/proc/net/route', 'r', encoding='utf-8', errors='ignore').read().splitlines()[1:]:
+    parts=line.split()
+    if len(parts) > 2 and parts[1] == '00000000':
+        gw=socket.inet_ntoa(struct.pack('<L', int(parts[2], 16)))
+        break
+print(gw)" 2>/dev/null || true)"
+  fi
+  printf '%s\n' "${gateway}"
+}
+
 ensure_dns_resolvers() {
   local target_dir
   local tmp_file
+  local gateway
 
   target_dir="$(dirname "${RESOLV_CONF}")"
   mkdir -p "${target_dir}"
   tmp_file="${RESOLV_CONF}.tmp"
+  gateway="$(detect_default_gateway || true)"
 
-  cat >"${tmp_file}" <<'EOF'
-nameserver 1.1.1.1
-nameserver 8.8.8.8
-nameserver 9.9.9.9
-options timeout:2 attempts:2
-EOF
+  {
+    if [ -n "${gateway}" ]; then
+      printf 'nameserver %s\n' "${gateway}"
+    fi
+    printf '%s\n' \
+      'nameserver 1.1.1.1' \
+      'nameserver 8.8.8.8' \
+      'nameserver 9.9.9.9' \
+      'options timeout:2 attempts:2'
+  } >"${tmp_file}"
 
   if [ ! -f "${RESOLV_CONF}" ] || ! cmp -s "${tmp_file}" "${RESOLV_CONF}"; then
     mv "${tmp_file}" "${RESOLV_CONF}"

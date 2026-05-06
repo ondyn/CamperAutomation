@@ -70,6 +70,7 @@ fi
 
 SSH_PORT="${SSH_PORT:-8022}"
 SSH_KEY_NAME="${SSH_KEY_NAME:-camper_automation_rsa}"
+SSH_IDENTITY="${SSH_IDENTITY:-${HOME}/.ssh/camper_automation_rsa}"
 SKIP_PASSWORD_DISABLE=0
 GENERATE_KEY=1
 
@@ -87,8 +88,10 @@ SSH_KEY_DIR="${HOME}/.ssh"
 SSH_KEY_PRIV="${SSH_KEY_DIR}/${SSH_KEY_NAME}"
 SSH_KEY_PUB="${SSH_KEY_PRIV}.pub"
 
-SSH_BASE=(ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "${PHONE_USER}@${PHONE_HOST}")
-SCP_CMD=(scp -P "${SSH_PORT}")
+SSH_ID_ARGS=()
+[ -f "${SSH_IDENTITY}" ] && SSH_ID_ARGS=(-i "${SSH_IDENTITY}")
+SSH_BASE=(ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "${SSH_ID_ARGS[@]}" "${PHONE_USER}@${PHONE_HOST}")
+SCP_CMD=(scp -P "${SSH_PORT}" "${SSH_ID_ARGS[@]}")
 
 echo "=== SSH Key-Based Authentication Hardening ==="
 echo "Phone host: ${PHONE_HOST}"
@@ -142,36 +145,31 @@ echo
 if [ "${SKIP_PASSWORD_DISABLE}" -eq 0 ]; then
   echo "Hardening SSH server: disabling password authentication..."
   
-  "${SSH_BASE[@]}" << 'EOF'
-bash -c '
+  "${SSH_BASE[@]}" 'bash -s' <<'EOF'
 set -e
-SSHD_CONFIG=$HOME/.termux/sshd_config
-test -f "$SSHD_CONFIG" || SSHD_CONFIG=/etc/ssh/sshd_config
+SSHD_CONFIG="$HOME/.termux/sshd_config"
 
-# Create Termux-specific sshd config if it doesn't exist
-if [ ! -f $HOME/.termux/sshd_config ]; then
-  mkdir -p $HOME/.termux
-  cat > $HOME/.termux/sshd_config <<SSHDCONF
-# Custom SSH daemon config for Termux
-Port 8022
-PasswordAuthentication no
-PubkeyAuthentication yes
-X11Forwarding no
-PrintMotd no
-Subsystem sftp /usr/libexec/sftp-server
-SSHDCONF
-  chmod 600 $HOME/.termux/sshd_config
-fi
-
-# Update with PasswordAuthentication no if using system config
-if [ -w /etc/ssh/sshd_config ]; then
-  if ! grep -q "PasswordAuthentication no" /etc/ssh/sshd_config; then
-    echo "PasswordAuthentication no" | sudo tee -a /etc/ssh/sshd_config >/dev/null
+if [ ! -f "$SSHD_CONFIG" ]; then
+  mkdir -p "$HOME/.termux"
+  printf '%s\n' \
+    '# Custom SSH daemon config for Termux' \
+    'Port 8022' \
+    'PasswordAuthentication no' \
+    'PubkeyAuthentication yes' \
+    'X11Forwarding no' \
+    'PrintMotd no' \
+    'Subsystem sftp /usr/libexec/sftp-server' \
+    > "$SSHD_CONFIG"
+  chmod 600 "$SSHD_CONFIG"
+  echo "SSH hardening config written to $SSHD_CONFIG"
+else
+  if ! grep -q "PasswordAuthentication no" "$SSHD_CONFIG"; then
+    echo "PasswordAuthentication no" >> "$SSHD_CONFIG"
+    echo "Added PasswordAuthentication no to $SSHD_CONFIG"
+  else
+    echo "PasswordAuthentication already set in $SSHD_CONFIG"
   fi
 fi
-
-echo "SSH hardening config written"
-'
 EOF
   
   echo "✓ SSH server hardened: password auth disabled"

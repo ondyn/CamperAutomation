@@ -189,14 +189,28 @@ ARCHIVE_PATH="$ARCHIVE_DIR/homeassistant-${HA_VERSION}.tar.gz"
 SOURCE_ROOT="$HOME/src"
 SOURCE_PATH="$SOURCE_ROOT/$HA_SOURCE_DIR"
 
-# cryptography (via maturin) needs Android API level when building from source on Termux.
+# go2rtc-client pulls orjson. On Termux/Android, newer orjson releases may
+# require unstable Rust features when built from source; keep a safe pin.
+if printf '%s\n' "${HA_RUNTIME_PIP_PACKAGES[@]}" | grep -q '^go2rtc-client=='; then
+  if ! printf '%s\n' "${HA_RUNTIME_PIP_PACKAGES[@]}" | grep -q '^orjson=='; then
+    HA_RUNTIME_PIP_PACKAGES+=("orjson==3.11.5")
+  fi
+fi
+
+# Native Python/Rust builds on Termux must use the interpreter's Android API
+# level for wheel tagging compatibility (not necessarily the phone SDK level).
 if [ -n "${ANDROID_API_LEVEL:-}" ]; then
   ANDROID_API_LEVEL="${ANDROID_API_LEVEL}"
 else
-  ANDROID_API_LEVEL="$(getprop ro.build.version.sdk 2>/dev/null || true)"
+  ANDROID_API_LEVEL="$(python3 - <<'PYEOF'
+import sysconfig
+v = sysconfig.get_config_var('ANDROID_API_LEVEL')
+print(v or '')
+PYEOF
+  )"
 fi
 if [ -z "$ANDROID_API_LEVEL" ]; then
-  ANDROID_API_LEVEL="$(uname -r | sed -n 's/.*android\([0-9][0-9]*\).*/\1/p' | head -n1)"
+  ANDROID_API_LEVEL="$(getprop ro.build.version.sdk 2>/dev/null || true)"
 fi
 if [ -z "$ANDROID_API_LEVEL" ]; then
   echo "ERROR: Could not determine Android API level for Python package builds." >&2
@@ -209,6 +223,7 @@ mkdir -p "$TMPDIR"
 export SODIUM_INSTALL=system
 export CFLAGS="-I${PREFIX}/include"
 export LDFLAGS="-L${PREFIX}/lib"
+export UV_LINK_MODE="copy"
 
 # Install pinned native Termux packages first, but degrade to the current
 # mirror version when an exact historical pin has been rotated out.

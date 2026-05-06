@@ -42,7 +42,10 @@ if [ -z "${PHONE_USER:-}" ]; then
 fi
 
 SSH_PORT="${SSH_PORT:-8022}"
-SSH_BASE=(ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "${PHONE_USER}@${PHONE_HOST}")
+SSH_IDENTITY="${SSH_IDENTITY:-${HOME}/.ssh/camper_automation_rsa}"
+SSH_ID_ARGS=()
+[ -f "${SSH_IDENTITY}" ] && SSH_ID_ARGS=(-i "${SSH_IDENTITY}")
+SSH_BASE=(ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "${SSH_ID_ARGS[@]}" "${PHONE_USER}@${PHONE_HOST}")
 
 echo "Installing startup-missing HA requirements on ${PHONE_USER}@${PHONE_HOST}:${SSH_PORT}..."
 
@@ -58,8 +61,9 @@ if [ ! -x "$VENV_PY" ]; then
 fi
 
 if [ ! -f "$RUN_LOG" ]; then
-  echo "ERROR: missing HA runner log at $RUN_LOG" >&2
-  exit 1
+  echo "INFO: HA runner log not found at $RUN_LOG — Home Assistant has not been started yet."
+  echo "INFO: Start Home Assistant first (e.g. ~/scripts/hass.sh or hassctl.sh start) then re-run this script."
+  exit 0
 fi
 
 # Capture missing module names from recent log history.

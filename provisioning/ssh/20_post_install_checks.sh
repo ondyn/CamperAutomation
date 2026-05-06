@@ -56,7 +56,10 @@ fi
 : "${PHONE_USER:?Set PHONE_USER}"
 
 SSH_PORT="${SSH_PORT:-8022}"
-SSH_BASE=(ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "${PHONE_USER}@${PHONE_HOST}")
+SSH_IDENTITY="${SSH_IDENTITY:-${HOME}/.ssh/camper_automation_rsa}"
+SSH_ID_ARGS=()
+[ -f "${SSH_IDENTITY}" ] && SSH_ID_ARGS=(-i "${SSH_IDENTITY}")
+SSH_BASE=(ssh -p "${SSH_PORT}" -o StrictHostKeyChecking=accept-new "${SSH_ID_ARGS[@]}" "${PHONE_USER}@${PHONE_HOST}")
 
 "${SSH_BASE[@]}" 'bash -lc "
 set -e

@@ -8,6 +8,7 @@ PyYAML==6.0.3
 SQLAlchemy==2.0.41
 acme==5.2.2
 aiodhcpwatcher==1.2.1
+aiodiscover==2.7.1
 aiodns==4.0.0
 aiohappyeyeballs==2.6.1
 aiohasupervisor==0.3.3
@@ -17,6 +18,7 @@ aiohttp-fast-zlib==0.3.0
 aiohttp==3.13.3
 aiooui==0.1.9
 aiosignal==1.4.0
+aiousbwatcher==1.1.1
 aiozoneinfo==0.2.3
 annotated-types==0.7.0
 annotatedyaml==1.0.2
@@ -24,6 +26,8 @@ anyio==4.10.0
 astral==2.2
 async-timeout==4.0.3
 async_interrupt==1.2.2
+async_upnp_client==0.46.2
+asyncinotify==4.4.4
 atomicwrites-homeassistant==1.4.1
 attrs==25.4.0
 audioop-lts==0.2.1
@@ -35,9 +39,10 @@ bleak==2.1.1
 bluetooth-adapters==2.1.0
 bluetooth-auto-recovery==1.5.3
 bluetooth-data-tools==1.28.4
-boto3==1.43.2
-botocore==1.43.2
+boto3==1.43.4
+botocore==1.43.4
 btsocket==0.3.0
+cached-ipaddress==1.0.1
 certifi==2026.4.22
 cffi==2.0.0
 chacha20poly1305-reuseable==0.13.2
@@ -45,6 +50,7 @@ charset-normalizer==3.4.3
 ciso8601==2.3.3
 cronsim==2.7
 cryptography==46.0.5
+defusedxml==0.7.1
 envs==1.4
 fnv-hash-fast==1.6.0
 fnvhash==0.2.1
@@ -73,11 +79,12 @@ mashumaro==3.20
 miniaudio==1.71
 multidict==6.7.1
 mutagen==1.47.0
+netifaces==0.11.0
 numpy==2.3.2
 orjson==3.11.5
 packaging==26.2
 pillow==12.0.0
-pip==26.1
+pip==26.1.1
 propcache==0.4.1
 protobuf==7.34.1
 psutil @ file:///home/builder/.termux-build/python-psutil/src
@@ -91,8 +98,11 @@ pycparser==3.0
 pydantic==2.13.3
 pydantic_core==2.46.3
 pymicro_vad==1.0.1
+pyroute2==0.9.6
+pyserial==3.5
 pyspeex_noise==1.0.2
 python-dateutil==2.9.0.post0
+python-didl-lite==1.5.0
 python-slugify==8.0.4
 pytz==2026.2
 regex==2026.4.4

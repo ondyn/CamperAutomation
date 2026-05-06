@@ -51,3 +51,4 @@ Or run individual steps:
 ## Notes
 
 - Root Xiaomi Mi11: <https://droidwin.com/how-to-root-xiaomi-eu-rom-via-magisk/>
+- SSH via Tailscale: ssh -p 8022 u0_a284@<tailscale-ip>
