@@ -39,8 +39,8 @@ bleak==2.1.1
 bluetooth-adapters==2.1.0
 bluetooth-auto-recovery==1.5.3
 bluetooth-data-tools==1.28.4
-boto3==1.43.4
-botocore==1.43.4
+boto3==1.43.5
+botocore==1.43.5
 btsocket==0.3.0
 cached-ipaddress==1.0.1
 certifi==2026.4.22
