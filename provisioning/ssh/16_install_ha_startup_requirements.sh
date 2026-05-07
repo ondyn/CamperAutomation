@@ -6,6 +6,10 @@ set -euo pipefail
 #   PHONE_HOST=192.168.43.1 PHONE_USER=u0_a123 ./provisioning/ssh/16_install_ha_startup_requirements.sh
 # Or (auto-detect):
 #   ./provisioning/ssh/16_install_ha_startup_requirements.sh
+# Password-based (host key verification disabled automatically):
+#   SSH_PASSWORD=secret ./provisioning/ssh/16_install_ha_startup_requirements.sh
+# Force host key checking regardless of auth method:
+#   SSH_STRICT_HOST_CHECKING=accept-new SSH_PASSWORD=secret ./provisioning/ssh/16_install_ha_startup_requirements.sh
 
 auto_detect_phone_host_adb() {
   local host=""
@@ -44,6 +48,10 @@ fi
 SSH_PORT="${SSH_PORT:-8022}"
 SSH_IDENTITY="${SSH_IDENTITY:-${HOME}/.ssh/camper_automation_rsa}"
 SSH_PASSWORD="${SSH_PASSWORD:-${PROVISION_SSH_PASSWORD:-}}"
+# Set SSH_STRICT_HOST_CHECKING=no to skip host key verification (useful for password-based
+# provisioning flows where the host key is not yet stored in known_hosts).
+SSH_STRICT_HOST_CHECKING="${SSH_STRICT_HOST_CHECKING:-accept-new}"
+
 SSH_ID_ARGS=()
 if [ -f "${SSH_IDENTITY}" ] && [ -z "${SSH_PASSWORD}" ]; then
   SSH_ID_ARGS=(-i "${SSH_IDENTITY}")
@@ -62,9 +70,17 @@ if [ -n "${SSH_PASSWORD}" ]; then
     -o PreferredAuthentications=password
     -o NumberOfPasswordPrompts=1
   )
+  # When using a password without an identity file, default to skipping host key
+  # verification unless the caller has explicitly set SSH_STRICT_HOST_CHECKING.
+  if [ "${SSH_STRICT_HOST_CHECKING}" = "accept-new" ]; then
+    SSH_STRICT_HOST_CHECKING="no"
+  fi
 fi
 
-SSH_BASE=("${SSH_TRANSPORT[@]}" -F /dev/null -p "${SSH_PORT}" -o ClearAllForwardings=yes -o ForwardAgent=no -o StrictHostKeyChecking=accept-new)
+SSH_BASE=("${SSH_TRANSPORT[@]}" -F /dev/null -p "${SSH_PORT}" -o ClearAllForwardings=yes -o ForwardAgent=no -o StrictHostKeyChecking="${SSH_STRICT_HOST_CHECKING}")
+if [ "${SSH_STRICT_HOST_CHECKING}" = "no" ]; then
+  SSH_BASE+=(-o UserKnownHostsFile=/dev/null)
+fi
 if [ ${#SSH_AUTH_OPTS[@]} -gt 0 ]; then
   SSH_BASE+=("${SSH_AUTH_OPTS[@]}")
 fi
@@ -80,6 +96,8 @@ set -euo pipefail
 
 VENV_PY="$HOME/.venv/bin/python"
 RUN_LOG="$HOME/logs/hass-runner.log"
+HA_LOG_TERMUX_HOME="$HOME/.homeassistant/home-assistant.log"
+HA_LOG_SUROOT="$HOME/.suroot/.homeassistant/home-assistant.log"
 
 if [ ! -x "$VENV_PY" ]; then
   echo "ERROR: missing HA venv at $VENV_PY" >&2
@@ -92,6 +110,152 @@ if [ ! -f "$RUN_LOG" ]; then
   exit 0
 fi
 
+find_ha_log() {
+  if [ -f "$HA_LOG_TERMUX_HOME" ]; then
+    echo "$HA_LOG_TERMUX_HOME"
+    return 0
+  fi
+  if [ -f "$HA_LOG_SUROOT" ]; then
+    echo "$HA_LOG_SUROOT"
+    return 0
+  fi
+  return 1
+}
+
+# Build and install a Python C-extension package from source on Android/Termux.
+#
+# Both zlib-ng and isal use setup.py with a SYSTEM_IS_UNIX guard that excludes
+# sys.platform=="android". pip's standard source-build path therefore raises
+# NotImplementedError before any compilation begins.  The workaround is:
+#   1. Download the sdist.
+#   2. Patch SYSTEM_IS_UNIX in setup.py to include "android".
+#   3. Build the wheel with `python setup.py bdist_wheel` (avoids pip's
+#      build-isolation wrapper which re-runs the unpatched pyproject.toml).
+#   4. Install the resulting .whl with pip.
+#
+# NOTE: setup.py bdist_wheel exits with SIGSEGV (signal 11) during Python
+# interpreter teardown *after* the wheel file is fully written.  The wheel is
+# valid; we suppress the abnormal exit and check for the file explicitly.
+_pip_install_patched_source() {
+  local pip_name="$1"   # PyPI package name (e.g. "zlib-ng")
+  local import_mod="$2" # Python import name to verify (e.g. "zlib_ng")
+  local setup_patch="$3" # sed expression(s) to apply to setup.py (newline-separated)
+
+  # Already installed?
+  if "$VENV_PY" -c "import ${import_mod}" 2>/dev/null; then
+    echo "OK: ${import_mod} already importable, skipping build"
+    return 0
+  fi
+
+  local workdir
+  workdir="$(mktemp -d)"
+  trap "rm -rf '${workdir}'" RETURN
+
+  echo "Downloading ${pip_name} sdist..."
+  if ! "$VENV_PY" -m pip download --no-deps --no-binary "${pip_name}" "${pip_name}" \
+        -d "${workdir}" 2>&1 | grep -E "^(Saved|error|ERROR)"; then
+    echo "WARNING: failed to download ${pip_name} sdist" >&2
+    return 1
+  fi
+
+  local tarball srcdir
+  tarball="$(ls "${workdir}"/*.tar.gz 2>/dev/null | head -1)"
+  if [ -z "${tarball}" ]; then
+    echo "WARNING: no sdist tarball found for ${pip_name}" >&2
+    return 1
+  fi
+
+  tar xzf "${tarball}" -C "${workdir}"
+  srcdir="$(ls -d "${workdir}"/*/  2>/dev/null | head -1)"
+  if [ -z "${srcdir}" ]; then
+    echo "WARNING: could not find extracted source dir for ${pip_name}" >&2
+    return 1
+  fi
+  srcdir="${srcdir%/}"
+
+  echo "Patching setup.py for Android..."
+  while IFS= read -r sed_expr; do
+    [ -n "${sed_expr}" ] || continue
+    sed -i "${sed_expr}" "${srcdir}/setup.py"
+  done <<< "${setup_patch}"
+
+  local distdir="${srcdir}/dist"
+  mkdir -p "${distdir}"
+
+  echo "Building wheel for ${pip_name} (may take a few minutes)..."
+  # Exit code may be 139 (SIGSEGV) due to known teardown crash in setup.py
+  # bdist_wheel on Android.  The wheel is fully written before the crash.
+  (cd "${srcdir}" && "$VENV_PY" setup.py bdist_wheel 2>&1) || true
+
+  local wheel
+  wheel="$(ls "${distdir}"/*.whl 2>/dev/null | head -1)"
+  if [ -z "${wheel}" ]; then
+    echo "WARNING: wheel build produced no .whl file for ${pip_name}" >&2
+    return 1
+  fi
+
+  echo "Installing ${wheel##*/}..."
+  if "$VENV_PY" -m pip install --force-reinstall --disable-pip-version-check "${wheel}"; then
+    echo "OK: ${pip_name} installed from patched source"
+  else
+    echo "WARNING: pip install of built wheel failed for ${pip_name}" >&2
+    return 1
+  fi
+}
+
+install_optional_zlib_accelerators_if_needed() {
+  local ha_log
+  ha_log="$(find_ha_log || true)"
+  if [ -z "$ha_log" ]; then
+    echo "INFO: Home Assistant core log not found; skipping optional zlib accelerator check."
+    return 0
+  fi
+
+  if ! grep -q "\[aiohttp_fast_zlib\] zlib_ng and isal are not available" "$ha_log"; then
+    echo "No aiohttp_fast_zlib accelerator warning detected in $(basename "$ha_log")"
+    return 0
+  fi
+
+  echo "Detected aiohttp_fast_zlib fallback warning in $(basename "$ha_log")"
+  echo ""
+  echo "NOTE: zlib-ng and isal both hard-code 'android' as unsupported in their"
+  echo "      setup.py SYSTEM_IS_UNIX guard.  Standard pip install always fails."
+  echo "      Using patch-and-build approach: download sdist -> patch -> build .whl -> install."
+  echo ""
+
+  # ── zlib-ng ─────────────────────────────────────────────────────────────────
+  # setup.py line 21: SYSTEM_IS_UNIX = (sys.platform.startswith("linux") or
+  # Fix: insert android before the existing linux check.
+  # setup.py line 110: elif sys.platform == "linux":
+  # Fix: extend the condition to cover android too.
+  local ZLIB_NG_PATCH
+  ZLIB_NG_PATCH='s/SYSTEM_IS_UNIX = (sys.platform.startswith("linux") or/SYSTEM_IS_UNIX = (sys.platform.startswith("linux") or\n                  sys.platform == "android" or/
+s/elif sys.platform == "linux":/elif sys.platform in ("linux", "android"):/
+'
+  _pip_install_patched_source "zlib-ng" "zlib_ng" "${ZLIB_NG_PATCH}" || \
+    echo "WARNING: zlib-ng optional accelerator could not be installed" >&2
+
+  # ── isal ────────────────────────────────────────────────────────────────────
+  # setup.py line 28: SYSTEM_IS_BSD)
+  # Fix: append android to the SYSTEM_IS_UNIX OR chain.
+  local ISAL_PATCH
+  ISAL_PATCH='s/SYSTEM_IS_BSD)/SYSTEM_IS_BSD or sys.platform == "android")/
+'
+  _pip_install_patched_source "isal" "isal" "${ISAL_PATCH}" || \
+    echo "WARNING: isal optional accelerator could not be installed" >&2
+
+  echo "Verifying optional package imports..."
+  "$VENV_PY" - <<'PY'
+mods = ("zlib_ng", "isal")
+for mod in mods:
+    try:
+        __import__(mod)
+        print(f"OK: import {mod}")
+    except Exception as exc:
+        print(f"MISSING: import {mod} failed: {exc}")
+PY
+}
+
 # Capture missing module names from recent log history.
 MISSING_MODULES="$($VENV_PY -c "import re, pathlib; p=pathlib.Path('$RUN_LOG'); lines=p.read_text(errors='ignore').splitlines(); s=0
 for i,l in enumerate(lines):
@@ -103,11 +267,10 @@ print('\\n'.join(mods))")"
 
 if [ -z "$MISSING_MODULES" ]; then
   echo "No missing Python modules detected in hass-runner.log"
-  exit 0
+else
+  echo "Missing modules detected:"
+  printf '%s\n' "$MISSING_MODULES"
 fi
-
-echo "Missing modules detected:"
-printf '%s\n' "$MISSING_MODULES"
 
 to_pip_name() {
   case "$1" in
@@ -116,16 +279,20 @@ to_pip_name() {
   esac
 }
 
-while IFS= read -r module; do
-  [ -n "$module" ] || continue
-  pkg="$(to_pip_name "$module")"
-  echo "Installing Python package: $pkg"
-  if ! "$VENV_PY" -m pip install --disable-pip-version-check "$pkg"; then
-    echo "WARNING: could not install package '$pkg' for module '$module'" >&2
-  fi
-done <<EOF
+if [ -n "$MISSING_MODULES" ]; then
+  while IFS= read -r module; do
+    [ -n "$module" ] || continue
+    pkg="$(to_pip_name "$module")"
+    echo "Installing Python package: $pkg"
+    if ! "$VENV_PY" -m pip install --disable-pip-version-check "$pkg"; then
+      echo "WARNING: could not install package '$pkg' for module '$module'" >&2
+    fi
+  done <<EOF
 $MISSING_MODULES
 EOF
+fi
+
+install_optional_zlib_accelerators_if_needed
 
 echo "Startup-missing requirements install complete."
 REMOTE_INSTALL
