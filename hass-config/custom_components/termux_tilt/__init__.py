@@ -9,7 +9,6 @@ import homeassistant.helpers.config_validation as cv
 from .const import (
     ATTR_ENTRY_ID,
     DOMAIN,
-    SERVICE_RESET_ZERO,
     PLATFORMS,
     SERVICE_SAMPLE_ONCE,
     SERVICE_SET_ZERO,
@@ -63,17 +62,12 @@ def _async_register_services(hass: HomeAssistant) -> None:
         for hub in _iter_target_hubs(hass, call.data.get(ATTR_ENTRY_ID)):
             await hub.async_set_manual_sampling_enabled(True)
 
-    async def handle_reset_zero(call) -> None:
-        for hub in _iter_target_hubs(hass, call.data.get(ATTR_ENTRY_ID)):
-            await hub.async_reset_zero()
-
     async def handle_stop_sampling(call) -> None:
         for hub in _iter_target_hubs(hass, call.data.get(ATTR_ENTRY_ID)):
             await hub.async_set_manual_sampling_enabled(False)
 
     hass.services.async_register(DOMAIN, SERVICE_SAMPLE_ONCE, handle_sample_once, schema=service_schema)
     hass.services.async_register(DOMAIN, SERVICE_SET_ZERO, handle_set_zero, schema=service_schema)
-    hass.services.async_register(DOMAIN, SERVICE_RESET_ZERO, handle_reset_zero, schema=service_schema)
     hass.services.async_register(DOMAIN, SERVICE_START_SAMPLING, handle_start_sampling, schema=service_schema)
     hass.services.async_register(DOMAIN, SERVICE_STOP_SAMPLING, handle_stop_sampling, schema=service_schema)
 

@@ -182,14 +182,6 @@ class TermuxTiltHub(RestoreEntity):
             }
         )
 
-    async def async_reset_zero(self) -> None:
-        await self.async_update_options(
-            {
-                CONF_ZERO_PITCH_DEGREES: 0.0,
-                CONF_ZERO_ROLL_DEGREES: 0.0,
-            }
-        )
-
     async def async_set_manual_sampling_enabled(self, enabled: bool) -> None:
         self._manual_sampling_enabled = enabled
         if enabled:
@@ -209,10 +201,10 @@ class TermuxTiltHub(RestoreEntity):
         options = {**entry.data, **entry.options}
         self.activation_entity_id = options.get(CONF_ACTIVATION_ENTITY_ID, DEFAULT_ACTIVATION_ENTITY_ID).strip()
         self.activation_state = options.get(CONF_ACTIVATION_STATE, DEFAULT_ACTIVATION_STATE).strip()
-        self.axle_track_mm = float(options.get(CONF_AXLE_TRACK_MM, DEFAULT_AXLE_TRACK_MM))
-        self.wheelbase_mm = float(options.get(CONF_WHEELBASE_MM, DEFAULT_WHEELBASE_MM))
-        self.update_interval_seconds = float(
-            options.get(CONF_UPDATE_INTERVAL_SECONDS, DEFAULT_UPDATE_INTERVAL_SECONDS)
+        self.axle_track_mm = int(round(float(options.get(CONF_AXLE_TRACK_MM, DEFAULT_AXLE_TRACK_MM))))
+        self.wheelbase_mm = int(round(float(options.get(CONF_WHEELBASE_MM, DEFAULT_WHEELBASE_MM))))
+        self.update_interval_seconds = int(
+            round(float(options.get(CONF_UPDATE_INTERVAL_SECONDS, DEFAULT_UPDATE_INTERVAL_SECONDS)))
         )
         self.zero_pitch_degrees = float(options.get(CONF_ZERO_PITCH_DEGREES, 0.0))
         self.zero_roll_degrees = float(options.get(CONF_ZERO_ROLL_DEGREES, 0.0))

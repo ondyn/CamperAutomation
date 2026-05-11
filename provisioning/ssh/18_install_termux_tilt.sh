@@ -16,6 +16,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LOCAL_COMPONENT_DIR="${ROOT_DIR}/hass-config/custom_components/termux_tilt"
 LOCAL_CARD_FILE="${ROOT_DIR}/hass-config/www/termux-tilt-card.js"
+LOCAL_IMAGE_FILE="${ROOT_DIR}/hass-config/www/van-top.png"
 SSH_PORT="${SSH_PORT:-8022}"
 SSH_IDENTITY="${SSH_IDENTITY:-${HOME}/.ssh/camper_automation_rsa}"
 SSH_PASSWORD="${SSH_PASSWORD:-${PROVISION_SSH_PASSWORD:-}}"
@@ -33,6 +34,11 @@ fi
 
 if [ ! -f "${LOCAL_CARD_FILE}" ]; then
   echo "ERROR: local Lovelace card file is missing: ${LOCAL_CARD_FILE}" >&2
+  exit 1
+fi
+
+if [ ! -f "${LOCAL_IMAGE_FILE}" ]; then
+  echo "ERROR: local van image file is missing: ${LOCAL_IMAGE_FILE}" >&2
   exit 1
 fi
 
@@ -136,6 +142,8 @@ TARGET_DIR="${REMOTE_HASS_CONFIG_DIR}/custom_components/termux_tilt"
 BACKUP_DIR="${REMOTE_HASS_CONFIG_DIR}/.backup/custom_components/termux_tilt.\$(date +%Y%m%d-%H%M%S)"
 CARD_TARGET="${REMOTE_HASS_CONFIG_DIR}/www/termux-tilt-card.js"
 CARD_BACKUP="${REMOTE_HASS_CONFIG_DIR}/.backup/www/termux-tilt-card.js.\$(date +%Y%m%d-%H%M%S)"
+IMAGE_TARGET="${REMOTE_HASS_CONFIG_DIR}/www/van-top.png"
+IMAGE_BACKUP="${REMOTE_HASS_CONFIG_DIR}/.backup/www/van-top.png.\$(date +%Y%m%d-%H%M%S)"
 mkdir -p "${REMOTE_HASS_CONFIG_DIR}/custom_components"
 mkdir -p "${REMOTE_HASS_CONFIG_DIR}/.backup/custom_components"
 mkdir -p "${REMOTE_HASS_CONFIG_DIR}/www"
@@ -149,14 +157,18 @@ if [ -f "\$CARD_TARGET" ]; then
   cp -a "\$CARD_TARGET" "\$CARD_BACKUP"
   echo "Card backup created: \$CARD_BACKUP"
 fi
+if [ -f "\$IMAGE_TARGET" ]; then
+  cp -a "\$IMAGE_TARGET" "\$IMAGE_BACKUP"
+  echo "Image backup created: \$IMAGE_BACKUP"
+fi
 rm -rf "\$TARGET_DIR"
 mkdir -p "\$TARGET_DIR"
 REMOTE_PREP
 
-echo "Uploading component and card files..."
+echo "Uploading component, card, and image files..."
 REMOTE_COMPONENT_TAR="\$HOME/.cache/provisioning/termux_tilt_bundle.tar"
 "${SSH_BASE[@]}" 'mkdir -p "$HOME/.cache/provisioning"'
-tar -C "${ROOT_DIR}/hass-config" -cf - custom_components/termux_tilt www/termux-tilt-card.js | "${SSH_BASE[@]}" "cat > \"${REMOTE_COMPONENT_TAR}\""
+tar -C "${ROOT_DIR}/hass-config" -cf - custom_components/termux_tilt www/termux-tilt-card.js www/van-top.png | "${SSH_BASE[@]}" "cat > \"${REMOTE_COMPONENT_TAR}\""
 "${SSH_BASE[@]}" "env -u BASH_ENV -u ENV /data/data/com.termux/files/usr/bin/bash -s" <<REMOTE_EXTRACT
 set -euo pipefail
 unset BASH_ENV ENV
@@ -166,9 +178,10 @@ tar -xf "\$REMOTE_COMPONENT_TAR" -C "\$TARGET_PARENT"
 rm -f "\$REMOTE_COMPONENT_TAR"
 [ -f "\$TARGET_PARENT/custom_components/termux_tilt/manifest.json" ]
 [ -f "\$TARGET_PARENT/www/termux-tilt-card.js" ]
+[ -f "\$TARGET_PARENT/www/van-top.png" ]
 REMOTE_EXTRACT
 
-echo "Registering Lovelace resource /local/termux-tilt-card.js (idempotent)..."
+echo "Registering Lovelace resource /local/termux-tilt-card.js (overwrite in place)..."
 "${SSH_BASE[@]}" "REMOTE_HASS_CONFIG_DIR='${REMOTE_HASS_CONFIG_DIR}' env -u BASH_ENV -u ENV /data/data/com.termux/files/usr/bin/bash -s" <<'REMOTE_RESOURCE'
 set -euo pipefail
 unset BASH_ENV ENV
@@ -186,10 +199,10 @@ fi
 
 "$PYTHON_BIN" - "$RESOURCE_FILE" <<'PY'
 import json
-import os
 import shutil
 import sys
-from datetime import datetime
+import uuid
+from datetime import datetime, timezone
 
 resource_file = sys.argv[1]
 resource_url = "/local/termux-tilt-card.js"
@@ -209,27 +222,36 @@ if not isinstance(resources, list):
   print("WARNING: Unsupported lovelace_resources structure; register /local/termux-tilt-card.js manually")
   sys.exit(0)
 
-exists = any(str(item.get("url", "")).split("?", 1)[0] == resource_url for item in resources if isinstance(item, dict))
-if exists:
-  print("Lovelace resource already present.")
-  sys.exit(0)
-
-backup = f"{resource_file}.bak.{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
+backup = f"{resource_file}.bak.{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}"
 shutil.copy2(resource_file, backup)
 
-next_id = 1
 for item in resources:
-  if isinstance(item, dict):
-    current_id = item.get("id")
-    if isinstance(current_id, int):
-      next_id = max(next_id, current_id + 1)
+  if isinstance(item, dict) and not isinstance(item.get("id"), str):
+    item["id"] = str(uuid.uuid4())
 
-resources.append({
-  "id": next_id,
+matching_indices = [
+  idx for idx, item in enumerate(resources)
+  if isinstance(item, dict) and str(item.get("url", "")).split("?", 1)[0] == resource_url
+]
+
+resource_entry = {
+  "id": str(uuid.uuid4()),
   "res_type": "module",
   "type": "module",
-  "url": f"{resource_url}?v={datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
-})
+  "url": resource_url,
+}
+
+if matching_indices:
+  primary_index = matching_indices[0]
+  resources[primary_index].update(resource_entry)
+  for duplicate_index in reversed(matching_indices[1:]):
+    resources.pop(duplicate_index)
+  print(f"Updated Lovelace resource: {resource_url}")
+  if len(matching_indices) > 1:
+    print(f"Removed duplicate entries: {len(matching_indices) - 1}")
+else:
+  resources.append(resource_entry)
+  print(f"Registered Lovelace resource: {resource_url}")
 
 if isinstance(data, dict):
   if isinstance(data.get("items"), list):
@@ -242,7 +264,6 @@ else:
 with open(resource_file, "w", encoding="utf-8") as f:
   json.dump(payload, f, ensure_ascii=True, separators=(",", ":"))
 
-print(f"Registered Lovelace resource: {resource_url}")
 print(f"Backup created: {backup}")
 PY
 REMOTE_RESOURCE

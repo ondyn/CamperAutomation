@@ -1,6 +1,6 @@
 // enable Advanced mode in HASS in user settings
 // add resource in http://192.168.1.178:8123/config/lovelace/resources
-//  URL: /local/termux-tilt-card.js
+//  URL: /local/termux-tilt-card-v2.js
 
 
 class TermuxTiltCard extends HTMLElement {
@@ -204,7 +204,7 @@ class TermuxTiltCard extends HTMLElement {
           align-items: center;
           justify-content: center;
           flex-direction: column;
-          font-size: 1.3rem;
+          font-size: 0.82rem;
           font-weight: 700;
           box-shadow: 0 8px 16px rgba(2, 6, 23, 0.3);
           transform: translateZ(0);
@@ -212,7 +212,7 @@ class TermuxTiltCard extends HTMLElement {
         }
 
         .wheel span {
-          font-size: 0.76rem;
+          font-size: 0.66rem;
           font-weight: 500;
           opacity: 0.88;
           margin-top: 2px;

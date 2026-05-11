@@ -29,12 +29,6 @@ BUTTONS: tuple[TermuxTiltButtonDescription, ...] = (
         icon="mdi:car-brake-alert",
         press_method="async_set_zero",
     ),
-    TermuxTiltButtonDescription(
-        key="reset_zero",
-        name="Reset zero",
-        icon="mdi:restore",
-        press_method="async_reset_zero",
-    ),
 )
 
 

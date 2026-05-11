@@ -234,6 +234,7 @@ tar -C "${ROOT_DIR}/hass-config" -cf - \
   blueprints \
   custom_components/termux_tilt \
   www/termux-tilt-card.js \
+  www/van-top.png \
   | "${SSH_TRANSPORT[@]}" "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'mkdir -p ~/.cache/provisioning && cat > ~/.cache/provisioning/hass-config.tar'
 
 "${SSH_TRANSPORT[@]}" "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" "REMOTE_HA_CONFIG_DIR='${REMOTE_HA_CONFIG_DIR}' bash -s" <<'REMOTE_SYNC'

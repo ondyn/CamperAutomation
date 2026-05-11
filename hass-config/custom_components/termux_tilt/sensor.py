@@ -44,7 +44,7 @@ SENSORS: tuple[TermuxTiltSensorDescription, ...] = (
         key="front_left_lift",
         name="Front left lift",
         icon="mdi:arrow-up-bold-box-outline",
-        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        native_unit_of_measurement=UnitOfLength.CENTIMETERS,
         state_class=SensorStateClass.MEASUREMENT,
         value_key=CORNER_FRONT_LEFT,
     ),
@@ -52,7 +52,7 @@ SENSORS: tuple[TermuxTiltSensorDescription, ...] = (
         key="front_right_lift",
         name="Front right lift",
         icon="mdi:arrow-up-bold-box-outline",
-        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        native_unit_of_measurement=UnitOfLength.CENTIMETERS,
         state_class=SensorStateClass.MEASUREMENT,
         value_key=CORNER_FRONT_RIGHT,
     ),
@@ -60,7 +60,7 @@ SENSORS: tuple[TermuxTiltSensorDescription, ...] = (
         key="rear_left_lift",
         name="Rear left lift",
         icon="mdi:arrow-up-bold-box-outline",
-        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        native_unit_of_measurement=UnitOfLength.CENTIMETERS,
         state_class=SensorStateClass.MEASUREMENT,
         value_key=CORNER_REAR_LEFT,
     ),
@@ -68,7 +68,7 @@ SENSORS: tuple[TermuxTiltSensorDescription, ...] = (
         key="rear_right_lift",
         name="Rear right lift",
         icon="mdi:arrow-up-bold-box-outline",
-        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        native_unit_of_measurement=UnitOfLength.CENTIMETERS,
         state_class=SensorStateClass.MEASUREMENT,
         value_key=CORNER_REAR_RIGHT,
     ),
@@ -122,7 +122,7 @@ class TermuxTiltSensor(TermuxTiltEntity, SensorEntity):
     def native_value(self):
         snapshot = self.hub.snapshot
         if self.entity_description.value_key in snapshot.wheel_lifts_mm:
-            return snapshot.wheel_lifts_mm[self.entity_description.value_key]
+            return round(snapshot.wheel_lifts_mm[self.entity_description.value_key] / 10.0, 1)
         return getattr(snapshot, self.entity_description.value_key)
 
     @property

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from homeassistant.components.number import NumberEntity, NumberEntityDescription
+from homeassistant.components.number import NumberEntity, NumberEntityDescription, NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfLength, UnitOfTime
 from homeassistant.core import HomeAssistant
@@ -30,7 +30,8 @@ NUMBERS: tuple[TermuxTiltNumberDescription, ...] = (
         icon="mdi:arrow-left-right",
         native_min_value=1000,
         native_max_value=3000,
-        native_step=10,
+        native_step=1,
+        mode=NumberMode.BOX,
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
         option_key=CONF_AXLE_TRACK_MM,
         getter="axle_track_mm",
@@ -41,7 +42,8 @@ NUMBERS: tuple[TermuxTiltNumberDescription, ...] = (
         icon="mdi:car-estate",
         native_min_value=1500,
         native_max_value=8000,
-        native_step=10,
+        native_step=1,
+        mode=NumberMode.BOX,
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
         option_key=CONF_WHEELBASE_MM,
         getter="wheelbase_mm",
@@ -53,6 +55,7 @@ NUMBERS: tuple[TermuxTiltNumberDescription, ...] = (
         native_min_value=1,
         native_max_value=60,
         native_step=1,
+        mode=NumberMode.BOX,
         native_unit_of_measurement=UnitOfTime.SECONDS,
         option_key=CONF_UPDATE_INTERVAL_SECONDS,
         getter="update_interval_seconds",
@@ -79,7 +82,7 @@ class TermuxTiltNumber(TermuxTiltEntity, NumberEntity):
 
     @property
     def native_value(self) -> float:
-        return float(getattr(self.hub, self.entity_description.getter))
+        return int(getattr(self.hub, self.entity_description.getter))
 
     async def async_set_native_value(self, value: float) -> None:
-        await self.hub.async_update_options({self.entity_description.option_key: float(value)})
+        await self.hub.async_update_options({self.entity_description.option_key: int(round(value))})
