@@ -129,12 +129,26 @@ try:
 except Exception:
     import traceback
     traceback.print_exc(file=sys.stderr)
+
+# Patch aiohttp content-encoding negotiation to prefer gzip over deflate.
+# aiohttp's CONTENT_CODINGS dict starts with 'deflate', so when a client sends
+# "Accept-Encoding: gzip, deflate" (e.g. Chrome), deflate wins.  Python's zlib
+# produces RFC 1950 (zlib-wrapped) deflate, but Chrome expects raw RFC 1951
+# deflate, causing ERR_CONTENT_DECODING_FAILED.  Reordering CONTENT_CODINGS so
+# gzip is first makes all browsers receive gzip instead.
+try:
+    import aiohttp.web_response as _awresp
+    _cc = _awresp.CONTENT_CODINGS
+    if list(_cc.keys())[0] != "gzip" and "gzip" in _cc:
+        _awresp.CONTENT_CODINGS = {"gzip": _cc["gzip"]} | {k: v for k, v in _cc.items() if k != "gzip"}
+except Exception:
+    import traceback
+    traceback.print_exc(file=sys.stderr)
 SC_EOF
 	log "aiohttp AsyncResolver.resolve patch installed at ${SITE_PKG}/sitecustomize.py"
 fi
 
 # --ignore-os-check: Android returns sys.platform=="linux" but HA's validate_os
 # still rejects it; this flag bypasses the check safely on Termux.
-# --skip-pip: keep startup deterministic and avoid runtime dependency installs,
-# which are fragile on Android/Termux and can fail on uv/pip backend specifics.
-exec "${HASS_BIN}" --ignore-os-check --skip-pip -c "${HASS_CONFIG_DIR}" >>"${RUN_LOG}" 2>&1
+# Do not use --skip-pip so HA can install integration dependencies at runtime.
+exec "${HASS_BIN}" --ignore-os-check -c "${HASS_CONFIG_DIR}" >>"${RUN_LOG}" 2>&1

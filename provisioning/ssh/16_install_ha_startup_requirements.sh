@@ -256,17 +256,33 @@ for mod in mods:
 PY
 }
 
-# Capture missing module names from recent log history.
-MISSING_MODULES="$($VENV_PY -c "import re, pathlib; p=pathlib.Path('$RUN_LOG'); lines=p.read_text(errors='ignore').splitlines(); s=0
-for i,l in enumerate(lines):
-  if 'Starting Home Assistant with config' in l:
-    s=i
-window='\n'.join(lines[s:])
-mods=sorted(set(re.findall(r\"No module named '([^']+)'\", window)))
-print('\\n'.join(mods))")"
+# Scan a single log file for 'No module named' errors since the last HA start.
+_scan_log_missing() {
+  local logfile="$1"
+  [ -f "$logfile" ] || { printf ''; return 0; }
+  "$VENV_PY" -c "
+import re, pathlib
+p = pathlib.Path('${logfile}')
+lines = p.read_text(errors='ignore').splitlines()
+s = 0
+for i, l in enumerate(lines):
+    if 'Starting Home Assistant' in l:
+        s = i
+window = '\n'.join(lines[s:])
+mods = sorted(set(re.findall(r\"No module named '([^']+)'\", window)))
+print('\n'.join(mods))
+" 2>/dev/null || true
+}
+
+# Capture missing module names from runner log AND HA core log.
+HA_LOG_PATH="$(find_ha_log 2>/dev/null || true)"
+MISSING_MODULES="$(
+  { _scan_log_missing "$RUN_LOG"; _scan_log_missing "${HA_LOG_PATH:-}"; } \
+  | sort -u | grep -v '^$' || true
+)"
 
 if [ -z "$MISSING_MODULES" ]; then
-  echo "No missing Python modules detected in hass-runner.log"
+  echo "No missing Python modules detected in logs"
 else
   echo "Missing modules detected:"
   printf '%s\n' "$MISSING_MODULES"
@@ -292,6 +308,65 @@ $MISSING_MODULES
 EOF
 fi
 
+# Known integration packages that require pre-installation (e.g. installed
+# before HA can set up the integration flow for the first time).
+# Format: pip_package_name|python_import_name
+KNOWN_INTEGRATION_PKGS="gTTS|gtts
+radios|radios"
+
+install_known_integration_packages() {
+  echo "Checking known integration packages..."
+  while IFS='|' read -r pip_name import_mod; do
+    [ -n "${pip_name}" ] || continue
+    if "$VENV_PY" -c "import ${import_mod}" 2>/dev/null; then
+      echo "OK: ${import_mod} already importable"
+    else
+      echo "Installing: ${pip_name}"
+      if ! "$VENV_PY" -m pip install --disable-pip-version-check "${pip_name}"; then
+        echo "WARNING: could not install '${pip_name}'" >&2
+      fi
+    fi
+  done <<EOF
+${KNOWN_INTEGRATION_PKGS}
+EOF
+}
+
+# ── uv stub ─────────────────────────────────────────────────────────────────
+# HA 2026.x always calls `python -m uv pip install` (no fallback to pip).
+# Termux ships uv as a system binary, not a Python module.  Install a minimal
+# stub package so `python -m uv` works by delegating to the system binary.
+install_uv_python_stub() {
+  local site_pkg
+  site_pkg="$("$VENV_PY" -c 'import site; print(site.getsitepackages()[0])')"
+  local stub_dir="${site_pkg}/uv"
+  local uv_bin
+  uv_bin="$(command -v uv 2>/dev/null || echo '/data/data/com.termux/files/usr/bin/uv')"
+
+  if ! "$VENV_PY" -c "import uv" 2>/dev/null; then
+    echo "Installing uv Python stub (delegates to system uv at ${uv_bin})..."
+    mkdir -p "${stub_dir}"
+    cat >"${stub_dir}/__init__.py" <<PYEOF
+# Stub: makes 'python -m uv' delegate to the Termux system uv binary.
+PYEOF
+    cat >"${stub_dir}/__main__.py" <<PYEOF
+import os, sys
+_UV_BIN = "${uv_bin}"
+if not os.path.isfile(_UV_BIN):
+    raise FileNotFoundError(f"System uv binary not found at {_UV_BIN}")
+os.execv(_UV_BIN, [_UV_BIN] + sys.argv[1:])
+PYEOF
+    if "$VENV_PY" -c "import uv" 2>/dev/null; then
+      echo "OK: uv stub installed"
+    else
+      echo "WARNING: uv stub installation failed" >&2
+    fi
+  else
+    echo "OK: uv already importable"
+  fi
+}
+
+install_uv_python_stub
+install_known_integration_packages
 install_optional_zlib_accelerators_if_needed
 
 echo "Startup-missing requirements install complete."

@@ -13,6 +13,7 @@ set -euo pipefail
 #   --skip-bootstrap  Skip running bootstrap_termux.sh via ADB
 #   --skip-ha         Skip Home Assistant Core installation
 #   --skip-hacs       Skip HACS installation
+#   --skip-termux-tilt Skip termux_tilt custom integration deployment
 #   --skip-tailscale  Skip Tailscale installation
 #   --skip-post-checks Skip post-install validation
 #   --tailscale-authkey <key>  Use non-interactive Tailscale auth
@@ -28,6 +29,7 @@ SKIP_DEBLOAT=0
 SKIP_BOOTSTRAP=0
 SKIP_HA=0
 SKIP_HACS=0
+SKIP_TERMUX_TILT=0
 SKIP_TAILSCALE=0
 SKIP_POST_CHECKS=0
 TAILSCALE_AUTHKEY=""
@@ -42,6 +44,7 @@ while [ "$#" -gt 0 ]; do
     --skip-bootstrap) SKIP_BOOTSTRAP=1 ;;
     --skip-ha) SKIP_HA=1 ;;
     --skip-hacs) SKIP_HACS=1 ;;
+    --skip-termux-tilt) SKIP_TERMUX_TILT=1 ;;
     --skip-tailscale) SKIP_TAILSCALE=1 ;;
     --skip-post-checks) SKIP_POST_CHECKS=1 ;;
     --tailscale-authkey)
@@ -53,7 +56,7 @@ while [ "$#" -gt 0 ]; do
       fi
       ;;
     --help)
-      echo "Usage: $0 [--skip-debloat] [--skip-hotspot] [--skip-bootstrap] [--skip-ha] [--skip-hacs] [--skip-tailscale] [--skip-post-checks] [--tailscale-authkey <key>] [--help]"
+      echo "Usage: $0 [--skip-debloat] [--skip-hotspot] [--skip-bootstrap] [--skip-ha] [--skip-hacs] [--skip-termux-tilt] [--skip-tailscale] [--skip-post-checks] [--tailscale-authkey <key>] [--help]"
       exit 0
       ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -214,6 +217,7 @@ fail() {
   echo "Skip bootstrap: ${SKIP_BOOTSTRAP}"
   echo "Skip Home Assistant: ${SKIP_HA}"
   echo "Skip HACS: ${SKIP_HACS}"
+  echo "Skip termux_tilt install: ${SKIP_TERMUX_TILT}"
   echo "Skip Tailscale: ${SKIP_TAILSCALE}"
   echo "Skip post checks: ${SKIP_POST_CHECKS}"
   echo "SSH auth mode for orchestrator: password-only"
@@ -344,7 +348,7 @@ else
       fail "PROVISION_SSH_PASSWORD is empty and could not be read from phone.\n       Set it explicitly: PROVISION_SSH_PASSWORD=<pass> $0 --skip-bootstrap ..."
     fi
   fi
-  if [ "${SKIP_HA}" -eq 0 ] || [ "${SKIP_TAILSCALE}" -eq 0 ] || [ "${SKIP_HACS}" -eq 0 ] || [ "${SKIP_POST_CHECKS}" -eq 0 ]; then
+  if [ "${SKIP_HA}" -eq 0 ] || [ "${SKIP_TAILSCALE}" -eq 0 ] || [ "${SKIP_HACS}" -eq 0 ] || [ "${SKIP_TERMUX_TILT}" -eq 0 ] || [ "${SKIP_POST_CHECKS}" -eq 0 ]; then
     prepare_local_ssh_tunnel
     if wait_for_local_ssh; then
       log "✓ Reused existing SSH service on localhost:${SSH_PORT} through adb forward"
@@ -391,16 +395,22 @@ else
   log_header "Step 13: HACS installation (SKIPPED)"
 fi
 
-if [ "${SKIP_POST_CHECKS}" -eq 0 ]; then
-  run_ssh_phase "Step 14: Run post-install checks" bash "${ROOT_DIR}/provisioning/ssh/20_post_install_checks.sh"
+if [ "${SKIP_TERMUX_TILT}" -eq 0 ]; then
+  run_ssh_phase "Step 14: Install termux_tilt custom integration" bash "${ROOT_DIR}/provisioning/ssh/18_install_termux_tilt.sh"
 else
-  log_header "Step 14: Post-install checks (SKIPPED)"
+  log_header "Step 14: termux_tilt custom integration (SKIPPED)"
+fi
+
+if [ "${SKIP_POST_CHECKS}" -eq 0 ]; then
+  run_ssh_phase "Step 15: Run post-install checks" bash "${ROOT_DIR}/provisioning/ssh/20_post_install_checks.sh"
+else
+  log_header "Step 15: Post-install checks (SKIPPED)"
 fi
 
 if [ "${SKIP_HA}" -eq 0 ]; then
-  run_ssh_phase "Step 15: Restart Home Assistant" bash "${ROOT_DIR}/provisioning/ssh/25_restart_homeassistant.sh"
+  run_ssh_phase "Step 16: Restart Home Assistant" bash "${ROOT_DIR}/provisioning/ssh/25_restart_homeassistant.sh"
 else
-  log_header "Step 15: Restart Home Assistant (SKIPPED - HA install skipped)"
+  log_header "Step 16: Restart Home Assistant (SKIPPED - HA install skipped)"
 fi
 
 {

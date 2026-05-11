@@ -16,6 +16,8 @@ RESOLV_CONF="${PREFIX}/etc/resolv.conf"
 DNS_WAIT_SECONDS="${DNS_WAIT_SECONDS:-12}"
 ROOT_CONFIG_DIR="${HOME_DIR}/.suroot/.homeassistant"
 USER_CONFIG_DIR="${HOME_DIR}/.homeassistant"
+HASS_PROCESS_PATTERN_BIN="${HASS_BIN}.*--ignore-os-check.*-c"
+HASS_PROCESS_PATTERN_PY="python[0-9.]*.*-m[[:space:]]+homeassistant.*--ignore-os-check.*-c"
 
 mkdir -p "${LOG_DIR}"
 
@@ -93,22 +95,54 @@ wait_for_dns() {
   return 1
 }
 
+hass_screen_session_ids() {
+  screen -ls 2>/dev/null | awk -v pat="^[0-9]+[.]${SESSION_NAME}$" '$1 ~ pat {print $1}'
+}
+
 has_screen_session() {
-  screen -ls 2>/dev/null | grep -q "[.]${SESSION_NAME}"
+  hass_screen_session_ids | grep -q .
+}
+
+has_live_screen_session() {
+  screen -ls 2>/dev/null | grep -E "[0-9]+[.]${SESSION_NAME}[[:space:]]+[(](Attached|Detached)[)]" >/dev/null 2>&1
+}
+
+stop_screen_sessions() {
+  local sid
+  while IFS= read -r sid; do
+    [ -n "${sid}" ] || continue
+    screen -S "${sid}" -X quit >/dev/null 2>&1 || true
+  done <<EOF
+$(hass_screen_session_ids)
+EOF
+}
+
+cleanup_stale_screen_sessions() {
+  screen -wipe >/dev/null 2>&1 || true
+}
+
+has_hass_process_for_config() {
+  local config_dir
+  config_dir="$1"
+  pgrep -f "${HASS_PROCESS_PATTERN_BIN} ${config_dir}" >/dev/null 2>&1 || \
+    pgrep -f "${HASS_PROCESS_PATTERN_PY} ${config_dir}" >/dev/null 2>&1
 }
 
 has_hass_process() {
-  pgrep -f "${HASS_BIN} --ignore-os-check --skip-pip -c ${ROOT_CONFIG_DIR}" >/dev/null 2>&1 || \
-    pgrep -f "${HASS_BIN} --ignore-os-check --skip-pip -c ${USER_CONFIG_DIR}" >/dev/null 2>&1
+  has_hass_process_for_config "${ROOT_CONFIG_DIR}" || \
+    has_hass_process_for_config "${USER_CONFIG_DIR}"
 }
 
 list_hass_processes() {
-  pgrep -a -f "${HASS_BIN} --ignore-os-check --skip-pip -c ${HOME_DIR}/" || true
+  pgrep -a -f "${HASS_PROCESS_PATTERN_BIN} ${HOME_DIR}/" || true
+  pgrep -a -f "${HASS_PROCESS_PATTERN_PY} ${HOME_DIR}/" || true
 }
 
 stop_hass_processes_for_current_uid() {
-  pkill -TERM -f "${HASS_BIN} --ignore-os-check --skip-pip -c ${ROOT_CONFIG_DIR}" >/dev/null 2>&1 || true
-  pkill -TERM -f "${HASS_BIN} --ignore-os-check --skip-pip -c ${USER_CONFIG_DIR}" >/dev/null 2>&1 || true
+  pkill -TERM -f "${HASS_PROCESS_PATTERN_BIN} ${ROOT_CONFIG_DIR}" >/dev/null 2>&1 || true
+  pkill -TERM -f "${HASS_PROCESS_PATTERN_BIN} ${USER_CONFIG_DIR}" >/dev/null 2>&1 || true
+  pkill -TERM -f "${HASS_PROCESS_PATTERN_PY} ${ROOT_CONFIG_DIR}" >/dev/null 2>&1 || true
+  pkill -TERM -f "${HASS_PROCESS_PATTERN_PY} ${USER_CONFIG_DIR}" >/dev/null 2>&1 || true
 }
 
 kill_hass_processes_with_su() {
@@ -120,15 +154,18 @@ kill_hass_processes_with_su() {
   fi
 
   # Clean up stale Home Assistant processes from previous Termux app UIDs.
-  su -c "pkill -TERM -f '${HASS_BIN} --ignore-os-check --skip-pip -c ${HOME_DIR}/' >/dev/null 2>&1 || true"
+  su -c "pkill -TERM -f '${HASS_PROCESS_PATTERN_BIN} ${HOME_DIR}/' >/dev/null 2>&1 || true"
+  su -c "pkill -TERM -f '${HASS_PROCESS_PATTERN_PY} ${HOME_DIR}/' >/dev/null 2>&1 || true"
   sleep 1
-  su -c "pkill -KILL -f '${HASS_BIN} --ignore-os-check --skip-pip -c ${HOME_DIR}/' >/dev/null 2>&1 || true"
+  su -c "pkill -KILL -f '${HASS_PROCESS_PATTERN_BIN} ${HOME_DIR}/' >/dev/null 2>&1 || true"
+  su -c "pkill -KILL -f '${HASS_PROCESS_PATTERN_PY} ${HOME_DIR}/' >/dev/null 2>&1 || true"
 }
 
 wait_for_exit() {
   i=0
   while [ "$i" -lt 20 ]; do
-    if ! has_screen_session && ! has_hass_process; then
+    cleanup_stale_screen_sessions
+    if ! has_live_screen_session && ! has_hass_process; then
       return 0
     fi
     i=$((i + 1))
@@ -154,7 +191,7 @@ PYEOF
   }
 
   i=0
-  while [ "$i" -lt 60 ]; do
+  while [ "$i" -lt 120 ]; do
     if command -v curl >/dev/null 2>&1; then
       code="$(curl -sS -m 3 -o /dev/null -w '%{http_code}' "${HTTP_URL}" || true)"
       case "$code" in
@@ -194,7 +231,8 @@ start_hass() {
 
   if has_screen_session; then
     echo "Removing stale screen session .${SESSION_NAME}."
-    screen -S "${SESSION_NAME}" -X quit >/dev/null 2>&1 || true
+    stop_screen_sessions
+    cleanup_stale_screen_sessions
     wait_for_exit || true
   fi
 
@@ -214,7 +252,8 @@ start_hass() {
 stop_hass() {
   if has_screen_session; then
     log "hassctl: stopping Home Assistant screen session"
-    screen -S "${SESSION_NAME}" -X quit >/dev/null 2>&1 || true
+    stop_screen_sessions
+    cleanup_stale_screen_sessions
   fi
 
   if has_hass_process; then
@@ -231,10 +270,18 @@ stop_hass() {
 
   if has_hass_process; then
     log "hassctl: forcing remaining Home Assistant process to exit"
-    pkill -KILL -f "${HASS_BIN} --ignore-os-check --skip-pip -c ${ROOT_CONFIG_DIR}" >/dev/null 2>&1 || true
-    pkill -KILL -f "${HASS_BIN} --ignore-os-check --skip-pip -c ${USER_CONFIG_DIR}" >/dev/null 2>&1 || true
+    pkill -KILL -f "${HASS_PROCESS_PATTERN_BIN} ${ROOT_CONFIG_DIR}" >/dev/null 2>&1 || true
+    pkill -KILL -f "${HASS_PROCESS_PATTERN_BIN} ${USER_CONFIG_DIR}" >/dev/null 2>&1 || true
+    pkill -KILL -f "${HASS_PROCESS_PATTERN_PY} ${ROOT_CONFIG_DIR}" >/dev/null 2>&1 || true
+    pkill -KILL -f "${HASS_PROCESS_PATTERN_PY} ${USER_CONFIG_DIR}" >/dev/null 2>&1 || true
   fi
-  screen -wipe >/dev/null 2>&1 || true
+  cleanup_stale_screen_sessions
+
+  # Non-live screen sockets should not block stop/restart; process state is truth.
+  if ! has_hass_process; then
+    echo "Home Assistant stopped."
+    return 0
+  fi
 
   if wait_for_exit; then
     echo "Home Assistant stopped."
@@ -251,6 +298,8 @@ status_hass() {
   if has_hass_process; then
     echo "status: running"
     list_hass_processes
+  elif has_live_screen_session; then
+    echo "status: running-screen-only"
   elif has_screen_session; then
     echo "status: stale-screen"
   else
