@@ -15,6 +15,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LOCAL_COMPONENT_DIR="${ROOT_DIR}/hass-config/custom_components/termux_tilt"
+LOCAL_CARD_FILE="${ROOT_DIR}/hass-config/www/termux-tilt-card.js"
 SSH_PORT="${SSH_PORT:-8022}"
 SSH_IDENTITY="${SSH_IDENTITY:-${HOME}/.ssh/camper_automation_rsa}"
 SSH_PASSWORD="${SSH_PASSWORD:-${PROVISION_SSH_PASSWORD:-}}"
@@ -27,6 +28,11 @@ fi
 
 if [ ! -f "${LOCAL_COMPONENT_DIR}/manifest.json" ]; then
   echo "ERROR: local manifest missing: ${LOCAL_COMPONENT_DIR}/manifest.json" >&2
+  exit 1
+fi
+
+if [ ! -f "${LOCAL_CARD_FILE}" ]; then
+  echo "ERROR: local Lovelace card file is missing: ${LOCAL_CARD_FILE}" >&2
   exit 1
 fi
 
@@ -128,30 +134,118 @@ set -euo pipefail
 unset BASH_ENV ENV
 TARGET_DIR="${REMOTE_HASS_CONFIG_DIR}/custom_components/termux_tilt"
 BACKUP_DIR="${REMOTE_HASS_CONFIG_DIR}/.backup/custom_components/termux_tilt.\$(date +%Y%m%d-%H%M%S)"
+CARD_TARGET="${REMOTE_HASS_CONFIG_DIR}/www/termux-tilt-card.js"
+CARD_BACKUP="${REMOTE_HASS_CONFIG_DIR}/.backup/www/termux-tilt-card.js.\$(date +%Y%m%d-%H%M%S)"
 mkdir -p "${REMOTE_HASS_CONFIG_DIR}/custom_components"
 mkdir -p "${REMOTE_HASS_CONFIG_DIR}/.backup/custom_components"
+mkdir -p "${REMOTE_HASS_CONFIG_DIR}/www"
+mkdir -p "${REMOTE_HASS_CONFIG_DIR}/.backup/www"
 find "${REMOTE_HASS_CONFIG_DIR}/custom_components" -maxdepth 1 -type d -name 'termux_tilt.bak*' -exec rm -rf {} +
 if [ -d "\$TARGET_DIR" ]; then
   cp -a "\$TARGET_DIR" "\$BACKUP_DIR"
   echo "Backup created: \$BACKUP_DIR"
 fi
+if [ -f "\$CARD_TARGET" ]; then
+  cp -a "\$CARD_TARGET" "\$CARD_BACKUP"
+  echo "Card backup created: \$CARD_BACKUP"
+fi
 rm -rf "\$TARGET_DIR"
 mkdir -p "\$TARGET_DIR"
 REMOTE_PREP
 
-echo "Uploading component files..."
-REMOTE_COMPONENT_TAR="\$HOME/.cache/provisioning/termux_tilt_component.tar"
+echo "Uploading component and card files..."
+REMOTE_COMPONENT_TAR="\$HOME/.cache/provisioning/termux_tilt_bundle.tar"
 "${SSH_BASE[@]}" 'mkdir -p "$HOME/.cache/provisioning"'
-tar -C "${ROOT_DIR}/hass-config/custom_components" -cf - termux_tilt | "${SSH_BASE[@]}" "cat > \"${REMOTE_COMPONENT_TAR}\""
+tar -C "${ROOT_DIR}/hass-config" -cf - custom_components/termux_tilt www/termux-tilt-card.js | "${SSH_BASE[@]}" "cat > \"${REMOTE_COMPONENT_TAR}\""
 "${SSH_BASE[@]}" "env -u BASH_ENV -u ENV /data/data/com.termux/files/usr/bin/bash -s" <<REMOTE_EXTRACT
 set -euo pipefail
 unset BASH_ENV ENV
-TARGET_PARENT="${REMOTE_HASS_CONFIG_DIR}/custom_components"
-REMOTE_COMPONENT_TAR="\$HOME/.cache/provisioning/termux_tilt_component.tar"
+TARGET_PARENT="${REMOTE_HASS_CONFIG_DIR}"
+REMOTE_COMPONENT_TAR="\$HOME/.cache/provisioning/termux_tilt_bundle.tar"
 tar -xf "\$REMOTE_COMPONENT_TAR" -C "\$TARGET_PARENT"
 rm -f "\$REMOTE_COMPONENT_TAR"
-[ -f "\$TARGET_PARENT/termux_tilt/manifest.json" ]
+[ -f "\$TARGET_PARENT/custom_components/termux_tilt/manifest.json" ]
+[ -f "\$TARGET_PARENT/www/termux-tilt-card.js" ]
 REMOTE_EXTRACT
+
+echo "Registering Lovelace resource /local/termux-tilt-card.js (idempotent)..."
+"${SSH_BASE[@]}" "REMOTE_HASS_CONFIG_DIR='${REMOTE_HASS_CONFIG_DIR}' env -u BASH_ENV -u ENV /data/data/com.termux/files/usr/bin/bash -s" <<'REMOTE_RESOURCE'
+set -euo pipefail
+unset BASH_ENV ENV
+
+RESOURCE_FILE="${REMOTE_HASS_CONFIG_DIR}/.storage/lovelace_resources"
+if [ ! -f "$RESOURCE_FILE" ]; then
+  echo "NOTE: $RESOURCE_FILE not found yet; add resource manually after first dashboard load: /local/termux-tilt-card.js"
+  exit 0
+fi
+
+PYTHON_BIN="$HOME/.venv/bin/python"
+if [ ! -x "$PYTHON_BIN" ]; then
+  PYTHON_BIN="python"
+fi
+
+"$PYTHON_BIN" - "$RESOURCE_FILE" <<'PY'
+import json
+import os
+import shutil
+import sys
+from datetime import datetime
+
+resource_file = sys.argv[1]
+resource_url = "/local/termux-tilt-card.js"
+
+with open(resource_file, "r", encoding="utf-8") as f:
+  payload = json.load(f)
+
+data = payload.get("data")
+if isinstance(data, dict):
+  resources = data.get("items")
+  if not isinstance(resources, list):
+    resources = data.get("resources")
+else:
+  resources = data
+
+if not isinstance(resources, list):
+  print("WARNING: Unsupported lovelace_resources structure; register /local/termux-tilt-card.js manually")
+  sys.exit(0)
+
+exists = any(str(item.get("url", "")).split("?", 1)[0] == resource_url for item in resources if isinstance(item, dict))
+if exists:
+  print("Lovelace resource already present.")
+  sys.exit(0)
+
+backup = f"{resource_file}.bak.{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
+shutil.copy2(resource_file, backup)
+
+next_id = 1
+for item in resources:
+  if isinstance(item, dict):
+    current_id = item.get("id")
+    if isinstance(current_id, int):
+      next_id = max(next_id, current_id + 1)
+
+resources.append({
+  "id": next_id,
+  "res_type": "module",
+  "type": "module",
+  "url": f"{resource_url}?v={datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+})
+
+if isinstance(data, dict):
+  if isinstance(data.get("items"), list):
+    data["items"] = resources
+  elif isinstance(data.get("resources"), list):
+    data["resources"] = resources
+else:
+  payload["data"] = resources
+
+with open(resource_file, "w", encoding="utf-8") as f:
+  json.dump(payload, f, ensure_ascii=True, separators=(",", ":"))
+
+print(f"Registered Lovelace resource: {resource_url}")
+print(f"Backup created: {backup}")
+PY
+REMOTE_RESOURCE
 
 echo "Installing integration Python requirements (if declared in manifest)..."
 "${SSH_BASE[@]}" "REMOTE_HASS_CONFIG_DIR='${REMOTE_HASS_CONFIG_DIR}' env -u BASH_ENV -u ENV /data/data/com.termux/files/usr/bin/bash -s" <<'REMOTE_REQS'
@@ -185,3 +279,4 @@ fi
 
 echo "termux_tilt deployment finished successfully."
 echo "Next: Home Assistant UI -> Settings -> Devices & Services -> Add Integration -> Termux Tilt Meter"
+echo "Add card type custom:termux-tilt-card and map its entity IDs in dashboard YAML/editor."

@@ -103,6 +103,28 @@ if grep -q -- '--skip-pip' "$HOME/scripts/hass.sh"; then
 	echo "ERROR: ~/scripts/hass.sh still contains --skip-pip" >&2
 	exit 1
 fi
+if ! grep -q 'ANDROID_API_LEVEL' "$HOME/scripts/hass.sh"; then
+	echo "ERROR: ~/scripts/hass.sh does not export ANDROID_API_LEVEL for runtime builds" >&2
+	exit 1
+fi
+
+ANDROID_API_LEVEL="${ANDROID_API_LEVEL:-}"
+if [ -z "$ANDROID_API_LEVEL" ]; then
+	ANDROID_API_LEVEL="$("$VENV_PY" - 2>/dev/null <<'PYEOF'
+import sysconfig
+print(sysconfig.get_config_var("ANDROID_API_LEVEL") or "")
+PYEOF
+	|| true)"
+fi
+if [ -z "$ANDROID_API_LEVEL" ]; then
+	ANDROID_API_LEVEL="$(getprop ro.build.version.sdk 2>/dev/null || true)"
+fi
+if [ -n "$ANDROID_API_LEVEL" ]; then
+	export ANDROID_API_LEVEL
+	echo "Using ANDROID_API_LEVEL=${ANDROID_API_LEVEL}"
+else
+	echo "WARNING: could not determine ANDROID_API_LEVEL for test install"
+fi
 
 echo "Testing package resolver in HA venv with: ${TEST_PKG}"
 "$VENV_PY" -m pip install --disable-pip-version-check --dry-run "$TEST_PKG"

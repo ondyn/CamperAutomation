@@ -104,6 +104,34 @@ if [ ! -x "$VENV_PY" ]; then
   exit 1
 fi
 
+configure_android_build_env() {
+  local detected
+  detected="${ANDROID_API_LEVEL:-}"
+
+  if [ -z "${detected}" ]; then
+    detected="$("$VENV_PY" - 2>/dev/null <<'PY'
+import sysconfig
+v = sysconfig.get_config_var('ANDROID_API_LEVEL')
+print(v or '')
+PY
+ || true)"
+  fi
+
+  if [ -z "${detected}" ] && command -v getprop >/dev/null 2>&1; then
+    detected="$(getprop ro.build.version.sdk 2>/dev/null || true)"
+  fi
+
+  if [ -z "${detected}" ]; then
+    echo "WARNING: Could not determine ANDROID_API_LEVEL; Rust/native builds may fail" >&2
+    return 1
+  fi
+
+  export ANDROID_API_LEVEL="${detected}"
+  echo "Using ANDROID_API_LEVEL=${ANDROID_API_LEVEL}"
+}
+
+configure_android_build_env || true
+
 if [ ! -f "$RUN_LOG" ]; then
   echo "INFO: HA runner log not found at $RUN_LOG — Home Assistant has not been started yet."
   echo "INFO: Start Home Assistant first (e.g. ~/scripts/hass.sh or hassctl.sh start) then re-run this script."
@@ -312,7 +340,8 @@ fi
 # before HA can set up the integration flow for the first time).
 # Format: pip_package_name|python_import_name
 KNOWN_INTEGRATION_PKGS="gTTS|gtts
-radios|radios"
+radios|radios
+openai==2.15.0|openai"
 
 install_known_integration_packages() {
   echo "Checking known integration packages..."

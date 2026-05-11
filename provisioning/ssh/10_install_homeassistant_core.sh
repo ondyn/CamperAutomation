@@ -16,7 +16,6 @@ if [ ! -f "${LOCK_FILE}" ]; then
   exit 1
 fi
 
-# shellcheck disable=SC1090
 source "${LOCK_FILE}"
 
 HA_VERSION="${HA_VERSION:-${LOCK_HA_VERSION}}"
@@ -205,6 +204,45 @@ if [ -f "${PYTHON_FREEZE_FILE}" ]; then
 fi
 
 "${SSH_TRANSPORT[@]}" "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'chmod 700 ~/.termux/boot/00-bootstrap ~/scripts/bootstrap_services.sh ~/scripts/hass.sh ~/scripts/hassctl.sh ~/scripts/termux-backup.sh ~/scripts/termux-restore.sh'
+
+REMOTE_HA_CONFIG_DIR="$(${SSH_TRANSPORT[@]} "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'bash -s' <<'REMOTE_DETECT'
+set -euo pipefail
+
+ROOT_HA_CONFIG="$HOME/.suroot/.homeassistant"
+USER_HA_CONFIG="$HOME/.homeassistant"
+
+if [ -f "$ROOT_HA_CONFIG/configuration.yaml" ] && [ -w "$ROOT_HA_CONFIG" ]; then
+  echo "$ROOT_HA_CONFIG"
+elif [ -f "$USER_HA_CONFIG/configuration.yaml" ] && [ -w "$USER_HA_CONFIG" ]; then
+  echo "$USER_HA_CONFIG"
+elif [ -d "$ROOT_HA_CONFIG" ] && [ -w "$ROOT_HA_CONFIG" ]; then
+  echo "$ROOT_HA_CONFIG"
+else
+  mkdir -p "$USER_HA_CONFIG"
+  echo "$USER_HA_CONFIG"
+fi
+REMOTE_DETECT
+ )"
+
+echo "Syncing Home Assistant config into ${REMOTE_HA_CONFIG_DIR}..."
+tar -C "${ROOT_DIR}/hass-config" -cf - \
+  configuration.yaml \
+  automations.yaml \
+  scripts.yaml \
+  scenes.yaml \
+  secrets.yaml \
+  blueprints \
+  custom_components/termux_tilt \
+  www/termux-tilt-card.js \
+  | "${SSH_TRANSPORT[@]}" "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'mkdir -p ~/.cache/provisioning && cat > ~/.cache/provisioning/hass-config.tar'
+
+"${SSH_TRANSPORT[@]}" "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" "REMOTE_HA_CONFIG_DIR='${REMOTE_HA_CONFIG_DIR}' bash -s" <<'REMOTE_SYNC'
+set -euo pipefail
+
+mkdir -p "$REMOTE_HA_CONFIG_DIR"
+tar -xf "$HOME/.cache/provisioning/hass-config.tar" -C "$REMOTE_HA_CONFIG_DIR"
+rm -f "$HOME/.cache/provisioning/hass-config.tar"
+REMOTE_SYNC
 
 "${SSH_TRANSPORT[@]}" "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" "LOCK_BASENAME='${LOCK_BASENAME}' HA_INSTALL_TOOL_OVERRIDE='${HA_INSTALL_TOOL}' HA_USE_FREEZE_LOCK='${HA_USE_FREEZE_LOCK}' bash -s" <<'REMOTE_INSTALL'
 set -euo pipefail
@@ -416,6 +454,8 @@ if [ ! -x "$VENV/bin/hass" ]; then
   echo "ERROR: install completed but venv hass binary is missing at $VENV/bin/hass" >&2
   exit 1
 fi
+
+sync_homeassistant_config
 
 if [ "${#HA_RUNTIME_PIP_PACKAGES[@]}" -gt 0 ]; then
   echo "Installing Termux runtime extras: ${HA_RUNTIME_PIP_PACKAGES[*]}"

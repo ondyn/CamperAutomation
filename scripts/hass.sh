@@ -23,6 +23,26 @@ DEFAULT_ROOT_CONFIG="${HOME_DIR}/.suroot/.homeassistant"
 DEFAULT_USER_CONFIG="${HOME_DIR}/.homeassistant"
 HASS_CONFIG_DIR="${HASS_CONFIG_DIR:-${DEFAULT_ROOT_CONFIG}}"
 
+detect_android_api_level() {
+	local detected
+	detected="${ANDROID_API_LEVEL:-}"
+
+	if [ -z "${detected}" ] && command -v python3 >/dev/null 2>&1; then
+		detected="$(python3 - <<'PYEOF'
+import sysconfig
+v = sysconfig.get_config_var('ANDROID_API_LEVEL')
+print(v or '')
+PYEOF
+		 2>/dev/null || true)"
+	fi
+
+	if [ -z "${detected}" ] && command -v getprop >/dev/null 2>&1; then
+		detected="$(getprop ro.build.version.sdk 2>/dev/null || true)"
+	fi
+
+	printf '%s\n' "${detected}"
+}
+
 detect_default_gateway() {
 	local gateway
 	gateway=""
@@ -79,6 +99,14 @@ ensure_dns_resolvers
 log() {
 	printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$1" >>"${RUN_LOG}"
 }
+
+ANDROID_API_LEVEL="$(detect_android_api_level)"
+if [ -n "${ANDROID_API_LEVEL}" ]; then
+	export ANDROID_API_LEVEL
+	log "Using ANDROID_API_LEVEL=${ANDROID_API_LEVEL}"
+else
+	log "WARNING: ANDROID_API_LEVEL could not be detected; native package builds may fail"
+fi
 
 if [ ! -f "${VENV_ACTIVATE}" ]; then
 	log "ERROR: missing venv activate script at ${VENV_ACTIVATE}"

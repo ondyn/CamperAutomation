@@ -20,6 +20,17 @@ set_zero:
       selector:
         text:
 
+reset_zero:
+  name: Reset zero
+  description: Reset level reference back to zero for both pitch and roll.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry ID when multiple tilt entries exist.
+      required: false
+      selector:
+        text:
+
 start_sampling:
   name: Start sampling
   description: Enable continuous live sampling for the selected entry.

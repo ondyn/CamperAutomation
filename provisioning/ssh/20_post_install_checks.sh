@@ -92,6 +92,28 @@ set -e
 printf \"== versions ==\\n\"
 python3 --version || true
 uv --version || true
+printf "== android api level for builds ==\\n"
+python3 - <<'PYEOF'
+import sysconfig
+print(f"sysconfig ANDROID_API_LEVEL={sysconfig.get_config_var('ANDROID_API_LEVEL')}")
+PYEOF
+echo "getprop ro.build.version.sdk=$(getprop ro.build.version.sdk 2>/dev/null || echo unknown)"
+if grep -q 'ANDROID_API_LEVEL' "$HOME/scripts/hass.sh" 2>/dev/null; then
+  echo "hass.sh: exports ANDROID_API_LEVEL (OK)"
+else
+  echo "hass.sh: missing ANDROID_API_LEVEL export (FAIL)"
+fi
+ACTIVE_HA_CONFIG_DIR=""
+if [ -f "$HOME/.suroot/.homeassistant/configuration.yaml" ] && [ -w "$HOME/.suroot/.homeassistant" ]; then
+  ACTIVE_HA_CONFIG_DIR="$HOME/.suroot/.homeassistant"
+elif [ -f "$HOME/.homeassistant/configuration.yaml" ] && [ -w "$HOME/.homeassistant" ]; then
+  ACTIVE_HA_CONFIG_DIR="$HOME/.homeassistant"
+fi
+if [ -n "$ACTIVE_HA_CONFIG_DIR" ] && grep -q '^mobile_app:' "$ACTIVE_HA_CONFIG_DIR/configuration.yaml" 2>/dev/null; then
+  echo "ha config: mobile_app enabled in ${ACTIVE_HA_CONFIG_DIR}/configuration.yaml"
+else
+  echo "ha config: mobile_app missing from active configuration.yaml"
+fi
 printf \"== services ==\\n\"
 pgrep -fa tailscaled || true
 pgrep -x sshd || true

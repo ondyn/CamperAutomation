@@ -12,7 +12,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
+from homeassistant.helpers.event import (
+    async_call_later,
+    async_track_state_change_event,
+    async_track_time_interval,
+)
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.util import dt as dt_util
 
@@ -36,6 +40,7 @@ from .const import (
     DEFAULT_WHEELBASE_MM,
     DOMAIN,
     LIFT_CORNERS,
+    MANUAL_SAMPLING_TIMEOUT_SECONDS,
     STATE_FRONT_DOWN,
     STATE_LEFT_DOWN,
     STATE_LEVEL,
@@ -68,6 +73,7 @@ class TermuxTiltHub(RestoreEntity):
         self._listeners: list[Callable[[], None]] = []
         self._interval_unsub: CALLBACK_TYPE | None = None
         self._activation_unsub: CALLBACK_TYPE | None = None
+        self._manual_timeout_unsub: CALLBACK_TYPE | None = None
         self._sample_lock = asyncio.Lock()
         self._snapshot = TiltSnapshot(wheel_lifts_mm={corner: 0.0 for corner in LIFT_CORNERS})
         self._manual_sampling_enabled = False
@@ -107,6 +113,7 @@ class TermuxTiltHub(RestoreEntity):
             "zero_roll_degrees": self.zero_roll_degrees,
             "last_error": self._snapshot.error,
             "sampled_at": self._snapshot.sampled_at,
+            "manual_sampling_timeout_seconds": MANUAL_SAMPLING_TIMEOUT_SECONDS,
         }
 
     async def async_setup(self) -> None:
@@ -114,6 +121,7 @@ class TermuxTiltHub(RestoreEntity):
 
     async def async_shutdown(self) -> None:
         self._stop_sampling_loop()
+        self._cancel_manual_sampling_timeout()
         if self._activation_unsub:
             self._activation_unsub()
             self._activation_unsub = None
@@ -174,8 +182,20 @@ class TermuxTiltHub(RestoreEntity):
             }
         )
 
+    async def async_reset_zero(self) -> None:
+        await self.async_update_options(
+            {
+                CONF_ZERO_PITCH_DEGREES: 0.0,
+                CONF_ZERO_ROLL_DEGREES: 0.0,
+            }
+        )
+
     async def async_set_manual_sampling_enabled(self, enabled: bool) -> None:
         self._manual_sampling_enabled = enabled
+        if enabled:
+            self._schedule_manual_sampling_timeout()
+        else:
+            self._cancel_manual_sampling_timeout()
         self._async_reconcile_sampling_loop(schedule_immediate_sample=enabled)
         self._notify_listeners()
 
@@ -254,6 +274,30 @@ class TermuxTiltHub(RestoreEntity):
         if self._interval_unsub is not None:
             self._interval_unsub()
             self._interval_unsub = None
+
+    @callback
+    def _schedule_manual_sampling_timeout(self) -> None:
+        self._cancel_manual_sampling_timeout()
+        self._manual_timeout_unsub = async_call_later(
+            self.hass,
+            MANUAL_SAMPLING_TIMEOUT_SECONDS,
+            self._handle_manual_sampling_timeout,
+        )
+
+    @callback
+    def _cancel_manual_sampling_timeout(self) -> None:
+        if self._manual_timeout_unsub is not None:
+            self._manual_timeout_unsub()
+            self._manual_timeout_unsub = None
+
+    @callback
+    def _handle_manual_sampling_timeout(self, _now: datetime) -> None:
+        if not self._manual_sampling_enabled:
+            return
+        self._manual_sampling_enabled = False
+        self._manual_timeout_unsub = None
+        self._async_reconcile_sampling_loop(schedule_immediate_sample=False)
+        self._notify_listeners()
 
     @callback
     def _notify_listeners(self) -> None:
