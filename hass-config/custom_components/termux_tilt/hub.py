@@ -22,9 +22,14 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     ANGLE_EPSILON_DEGREES,
+    CALIBRATION_LEVEL_STEP,
+    CALIBRATION_SEQUENCE,
     CONF_ACTIVATION_ENTITY_ID,
     CONF_ACTIVATION_STATE,
     CONF_AXLE_TRACK_MM,
+    CONF_CALIBRATION_COEFFICIENTS,
+    CONF_CALIBRATION_LEVEL_VECTOR,
+    CONF_CALIBRATION_TARGET_LIFT_MM,
     CONF_UPDATE_INTERVAL_SECONDS,
     CONF_WHEELBASE_MM,
     CONF_ZERO_PITCH_DEGREES,
@@ -36,6 +41,7 @@ from .const import (
     DEFAULT_ACTIVATION_ENTITY_ID,
     DEFAULT_ACTIVATION_STATE,
     DEFAULT_AXLE_TRACK_MM,
+    DEFAULT_CALIBRATION_TARGET_LIFT_MM,
     DEFAULT_UPDATE_INTERVAL_SECONDS,
     DEFAULT_WHEELBASE_MM,
     DOMAIN,
@@ -85,6 +91,24 @@ class TermuxTiltHub(RestoreEntity):
             model="Android Tilt Meter",
             name=entry.title,
         )
+
+        self._calibration_active = False
+        self._calibration_step_index = 0
+        self._calibration_samples: dict[str, tuple[float, float, float]] = {}
+        self._calibration_last_error: str | None = None
+        self._calibration_completed_at: datetime | None = None
+
+        self.activation_entity_id = ""
+        self.activation_state = ""
+        self.axle_track_mm = DEFAULT_AXLE_TRACK_MM
+        self.wheelbase_mm = DEFAULT_WHEELBASE_MM
+        self.update_interval_seconds = DEFAULT_UPDATE_INTERVAL_SECONDS
+        self.zero_pitch_degrees = 0.0
+        self.zero_roll_degrees = 0.0
+        self.calibration_target_lift_mm = DEFAULT_CALIBRATION_TARGET_LIFT_MM
+        self.calibration_level_vector: tuple[float, float, float] | None = None
+        self.calibration_coefficients: dict[str, tuple[float, float]] = {}
+
         self._apply_entry_values(entry)
 
     @property
@@ -114,6 +138,16 @@ class TermuxTiltHub(RestoreEntity):
             "last_error": self._snapshot.error,
             "sampled_at": self._snapshot.sampled_at,
             "manual_sampling_timeout_seconds": MANUAL_SAMPLING_TIMEOUT_SECONDS,
+            "calibration_active": self._calibration_active,
+            "calibration_has_model": self._has_calibration_model,
+            "calibration_step": self._current_calibration_step_key(),
+            "calibration_step_index": self._calibration_step_index,
+            "calibration_total_steps": len(self._calibration_steps()),
+            "calibration_instruction": self._calibration_instruction(),
+            "calibration_progress": self._calibration_progress(),
+            "calibration_target_lift_mm": self.calibration_target_lift_mm,
+            "calibration_last_error": self._calibration_last_error,
+            "calibration_completed_at": self._calibration_completed_at,
         }
 
     async def async_setup(self) -> None:
@@ -150,21 +184,37 @@ class TermuxTiltHub(RestoreEntity):
                 payload = await self._async_run_termux_sensor()
                 accelerometer = _extract_vector(payload, ("accelerometer", "acceleration"))
                 gyroscope = _extract_vector(payload, ("gyroscope", "gyro"))
-            except Exception as err:
+            except (RuntimeError, ValueError, TypeError, KeyError, json.JSONDecodeError) as err:
                 self.command_available = False
                 self._snapshot.error = str(err)
                 self._notify_listeners()
                 return
 
             self.command_available = True
-            self._snapshot = _build_snapshot(
-                accelerometer=accelerometer,
-                gyroscope=gyroscope,
-                axle_track_mm=self.axle_track_mm,
-                wheelbase_mm=self.wheelbase_mm,
-                zero_pitch_degrees=self.zero_pitch_degrees,
-                zero_roll_degrees=self.zero_roll_degrees,
-            )
+            raw_pitch, raw_roll = _legacy_angles(accelerometer)
+            if self._has_calibration_model:
+                self._snapshot = _build_snapshot_calibrated(
+                    accelerometer=accelerometer,
+                    gyroscope=gyroscope,
+                    axle_track_mm=self.axle_track_mm,
+                    wheelbase_mm=self.wheelbase_mm,
+                    calibration_level_vector=self.calibration_level_vector,
+                    calibration_coefficients=self.calibration_coefficients,
+                    raw_pitch=raw_pitch,
+                    raw_roll=raw_roll,
+                )
+            else:
+                self._snapshot = _build_snapshot_legacy(
+                    accelerometer=accelerometer,
+                    gyroscope=gyroscope,
+                    axle_track_mm=self.axle_track_mm,
+                    wheelbase_mm=self.wheelbase_mm,
+                    zero_pitch_degrees=self.zero_pitch_degrees,
+                    zero_roll_degrees=self.zero_roll_degrees,
+                    raw_pitch=raw_pitch,
+                    raw_roll=raw_roll,
+                )
+
             self._snapshot.sampled_at = dt_util.utcnow()
             self._notify_listeners()
 
@@ -191,6 +241,66 @@ class TermuxTiltHub(RestoreEntity):
         self._async_reconcile_sampling_loop(schedule_immediate_sample=enabled)
         self._notify_listeners()
 
+    async def async_start_calibration(self, target_lift_mm: float | None = None) -> None:
+        if target_lift_mm is not None and target_lift_mm > 0:
+            self.calibration_target_lift_mm = float(target_lift_mm)
+        self._calibration_active = True
+        self._calibration_step_index = 0
+        self._calibration_samples = {}
+        self._calibration_last_error = None
+        self._notify_listeners()
+
+    async def async_capture_calibration_step(self) -> None:
+        if not self._calibration_active:
+            raise RuntimeError("Calibration is not active. Start calibration first.")
+
+        await self.async_sample_once()
+        if not self._snapshot.accelerometer:
+            raise RuntimeError("No accelerometer sample available.")
+
+        normalized = _normalize_vector(self._snapshot.accelerometer)
+        current_step = self._current_calibration_step_key()
+        if current_step is None:
+            raise RuntimeError("Calibration step is not available.")
+
+        self._calibration_samples[current_step] = normalized
+        self._calibration_step_index += 1
+
+        if self._calibration_step_index >= len(self._calibration_steps()):
+            try:
+                level_vector, coefficients = _build_calibration_model(
+                    samples=self._calibration_samples,
+                    target_lift_mm=self.calibration_target_lift_mm,
+                )
+            except Exception as err:
+                self._calibration_last_error = str(err)
+                self._calibration_active = False
+                self._notify_listeners()
+                raise
+
+            self._calibration_active = False
+            self._calibration_completed_at = dt_util.utcnow()
+            await self.async_update_options(
+                {
+                    CONF_CALIBRATION_LEVEL_VECTOR: [round(v, 8) for v in level_vector],
+                    CONF_CALIBRATION_COEFFICIENTS: {
+                        corner: [round(coefficients[corner][0], 8), round(coefficients[corner][1], 8)]
+                        for corner in LIFT_CORNERS
+                    },
+                    CONF_CALIBRATION_TARGET_LIFT_MM: self.calibration_target_lift_mm,
+                }
+            )
+            self._notify_listeners()
+            return
+
+        self._notify_listeners()
+
+    async def async_cancel_calibration(self) -> None:
+        self._calibration_active = False
+        self._calibration_step_index = 0
+        self._calibration_samples = {}
+        self._notify_listeners()
+
     async def async_update_options(self, updates: dict[str, Any]) -> None:
         new_options = {**self.entry.options, **updates}
         self.hass.config_entries.async_update_entry(self.entry, options=new_options)
@@ -208,6 +318,48 @@ class TermuxTiltHub(RestoreEntity):
         )
         self.zero_pitch_degrees = float(options.get(CONF_ZERO_PITCH_DEGREES, 0.0))
         self.zero_roll_degrees = float(options.get(CONF_ZERO_ROLL_DEGREES, 0.0))
+        self.calibration_target_lift_mm = float(
+            options.get(CONF_CALIBRATION_TARGET_LIFT_MM, DEFAULT_CALIBRATION_TARGET_LIFT_MM)
+        )
+        self.calibration_level_vector = _coerce_vector(options.get(CONF_CALIBRATION_LEVEL_VECTOR))
+        self.calibration_coefficients = _coerce_coefficients(options.get(CONF_CALIBRATION_COEFFICIENTS))
+
+    @property
+    def _has_calibration_model(self) -> bool:
+        if self.calibration_level_vector is None:
+            return False
+        return all(corner in self.calibration_coefficients for corner in LIFT_CORNERS)
+
+    def _calibration_steps(self) -> list[str]:
+        return [CALIBRATION_LEVEL_STEP, *CALIBRATION_SEQUENCE]
+
+    def _current_calibration_step_key(self) -> str | None:
+        if not self._calibration_active:
+            return None
+        steps = self._calibration_steps()
+        if self._calibration_step_index >= len(steps):
+            return None
+        return steps[self._calibration_step_index]
+
+    def _calibration_progress(self) -> float:
+        total = len(self._calibration_steps())
+        if total <= 0:
+            return 0.0
+        return round(min(1.0, max(0.0, self._calibration_step_index / total)), 3)
+
+    def _calibration_instruction(self) -> str:
+        if not self._calibration_active:
+            if self._has_calibration_model:
+                return "Calibration saved. Start calibration to replace it."
+            return "Calibration not started."
+
+        step = self._current_calibration_step_key()
+        if step == CALIBRATION_LEVEL_STEP:
+            return "Place the van on level ground and press Capture step."
+
+        wheel_label = step.replace("_", " ") if step else "wheel"
+        target_cm = round(self.calibration_target_lift_mm / 10.0, 1)
+        return f"Lift {wheel_label} by {target_cm} cm, then press Capture step."
 
     async def _async_configure_activation_tracking(self) -> None:
         if self._activation_unsub:
@@ -371,15 +523,40 @@ def _coerce_axes(value: Any) -> dict[str, float] | None:
     return None
 
 
-def _build_snapshot(
-    *,
-    accelerometer: dict[str, float],
-    gyroscope: dict[str, float],
-    axle_track_mm: float,
-    wheelbase_mm: float,
-    zero_pitch_degrees: float,
-    zero_roll_degrees: float,
-) -> TiltSnapshot:
+def _coerce_vector(value: Any) -> tuple[float, float, float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        return None
+    try:
+        vector = (float(value[0]), float(value[1]), float(value[2]))
+    except (TypeError, ValueError):
+        return None
+    if not all(math.isfinite(item) for item in vector):
+        return None
+    return _normalize_tuple(vector)
+
+
+def _coerce_coefficients(value: Any) -> dict[str, tuple[float, float]]:
+    if not isinstance(value, dict):
+        return {}
+
+    coeffs: dict[str, tuple[float, float]] = {}
+    for corner in LIFT_CORNERS:
+        item = value.get(corner)
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            continue
+        try:
+            a = float(item[0])
+            b = float(item[1])
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(a) or not math.isfinite(b):
+            continue
+        coeffs[corner] = (a, b)
+
+    return coeffs
+
+
+def _legacy_angles(accelerometer: dict[str, float]) -> tuple[float, float]:
     if not accelerometer:
         raise RuntimeError("accelerometer data was not present in termux-sensor output")
 
@@ -389,12 +566,111 @@ def _build_snapshot(
 
     raw_pitch = math.degrees(math.atan2(accel_y, math.sqrt((accel_x * accel_x) + (accel_z * accel_z))))
     raw_roll = math.degrees(math.atan2(accel_x, accel_z))
+    return raw_pitch, raw_roll
+
+
+def _build_snapshot_legacy(
+    *,
+    accelerometer: dict[str, float],
+    gyroscope: dict[str, float],
+    axle_track_mm: float,
+    wheelbase_mm: float,
+    zero_pitch_degrees: float,
+    zero_roll_degrees: float,
+    raw_pitch: float,
+    raw_roll: float,
+) -> TiltSnapshot:
     pitch = raw_pitch - zero_pitch_degrees
     roll = raw_roll - zero_roll_degrees
 
     pitch_slope = math.tan(math.radians(pitch))
     roll_slope = math.tan(math.radians(roll))
+    wheel_lifts_mm, highest_corner, lowest_corner = _wheel_lifts_from_slopes(
+        pitch_slope=pitch_slope,
+        roll_slope=roll_slope,
+        axle_track_mm=axle_track_mm,
+        wheelbase_mm=wheelbase_mm,
+    )
 
+    return TiltSnapshot(
+        pitch_degrees=round(pitch, 2),
+        roll_degrees=round(roll, 2),
+        raw_pitch_degrees=round(raw_pitch, 2),
+        raw_roll_degrees=round(raw_roll, 2),
+        wheel_lifts_mm=wheel_lifts_mm,
+        longitudinal_direction=_direction_for_pitch(pitch),
+        lateral_direction=_direction_for_roll(roll),
+        lowest_corner=lowest_corner,
+        highest_corner=highest_corner,
+        accelerometer=accelerometer,
+        gyroscope=gyroscope,
+        error=None,
+    )
+
+
+def _build_snapshot_calibrated(
+    *,
+    accelerometer: dict[str, float],
+    gyroscope: dict[str, float],
+    axle_track_mm: float,
+    wheelbase_mm: float,
+    calibration_level_vector: tuple[float, float, float] | None,
+    calibration_coefficients: dict[str, tuple[float, float]],
+    raw_pitch: float,
+    raw_roll: float,
+) -> TiltSnapshot:
+    if calibration_level_vector is None:
+        raise RuntimeError("Calibration level vector is not available.")
+    if not all(corner in calibration_coefficients for corner in LIFT_CORNERS):
+        raise RuntimeError("Calibration model is incomplete.")
+
+    basis_x, basis_y = _build_level_basis(calibration_level_vector)
+    projected_x, projected_y = _project_vector(_normalize_vector(accelerometer), basis_x, basis_y)
+
+    corner_heights = {
+        corner: (calibration_coefficients[corner][0] * projected_x) + (calibration_coefficients[corner][1] * projected_y)
+        for corner in LIFT_CORNERS
+    }
+
+    highest_corner = max(corner_heights, key=corner_heights.get)
+    lowest_corner = min(corner_heights, key=corner_heights.get)
+    highest_height = corner_heights[highest_corner]
+    wheel_lifts_mm = {
+        corner: round(max(0.0, highest_height - height), 1)
+        for corner, height in corner_heights.items()
+    }
+
+    pitch_slope, roll_slope = _slopes_from_corner_heights(
+        corner_heights=corner_heights,
+        axle_track_mm=axle_track_mm,
+        wheelbase_mm=wheelbase_mm,
+    )
+    pitch = math.degrees(math.atan(pitch_slope))
+    roll = math.degrees(math.atan(roll_slope))
+
+    return TiltSnapshot(
+        pitch_degrees=round(pitch, 2),
+        roll_degrees=round(roll, 2),
+        raw_pitch_degrees=round(raw_pitch, 2),
+        raw_roll_degrees=round(raw_roll, 2),
+        wheel_lifts_mm=wheel_lifts_mm,
+        longitudinal_direction=_direction_for_pitch(pitch),
+        lateral_direction=_direction_for_roll(roll),
+        lowest_corner=lowest_corner,
+        highest_corner=highest_corner,
+        accelerometer=accelerometer,
+        gyroscope=gyroscope,
+        error=None,
+    )
+
+
+def _wheel_lifts_from_slopes(
+    *,
+    pitch_slope: float,
+    roll_slope: float,
+    axle_track_mm: float,
+    wheelbase_mm: float,
+) -> tuple[dict[str, float], str, str]:
     wheel_positions = {
         CORNER_FRONT_LEFT: (wheelbase_mm / 2.0, -axle_track_mm / 2.0),
         CORNER_FRONT_RIGHT: (wheelbase_mm / 2.0, axle_track_mm / 2.0),
@@ -412,20 +688,113 @@ def _build_snapshot(
         corner: round(max(0.0, highest_height - height), 1)
         for corner, height in corner_heights.items()
     }
+    return wheel_lifts_mm, highest_corner, lowest_corner
 
-    return TiltSnapshot(
-        pitch_degrees=round(pitch, 2),
-        roll_degrees=round(roll, 2),
-        raw_pitch_degrees=round(raw_pitch, 2),
-        raw_roll_degrees=round(raw_roll, 2),
-        wheel_lifts_mm=wheel_lifts_mm,
-        longitudinal_direction=_direction_for_pitch(pitch),
-        lateral_direction=_direction_for_roll(roll),
-        lowest_corner=lowest_corner,
-        highest_corner=highest_corner,
-        accelerometer=accelerometer,
-        gyroscope=gyroscope,
-        error=None,
+
+def _slopes_from_corner_heights(
+    *,
+    corner_heights: dict[str, float],
+    axle_track_mm: float,
+    wheelbase_mm: float,
+) -> tuple[float, float]:
+    pitch_slope = (
+        (corner_heights[CORNER_FRONT_LEFT] + corner_heights[CORNER_FRONT_RIGHT])
+        - (corner_heights[CORNER_REAR_LEFT] + corner_heights[CORNER_REAR_RIGHT])
+    ) / (2.0 * max(1.0, wheelbase_mm))
+
+    roll_slope = (
+        (corner_heights[CORNER_FRONT_RIGHT] + corner_heights[CORNER_REAR_RIGHT])
+        - (corner_heights[CORNER_FRONT_LEFT] + corner_heights[CORNER_REAR_LEFT])
+    ) / (2.0 * max(1.0, axle_track_mm))
+
+    return pitch_slope, roll_slope
+
+
+def _build_calibration_model(
+    *,
+    samples: dict[str, tuple[float, float, float]],
+    target_lift_mm: float,
+) -> tuple[tuple[float, float, float], dict[str, tuple[float, float]]]:
+    missing = [step for step in [CALIBRATION_LEVEL_STEP, *CALIBRATION_SEQUENCE] if step not in samples]
+    if missing:
+        raise RuntimeError(f"Missing calibration samples: {', '.join(missing)}")
+
+    level_vector = _normalize_tuple(samples[CALIBRATION_LEVEL_STEP])
+    basis_x, basis_y = _build_level_basis(level_vector)
+
+    rows_by_corner: dict[str, list[tuple[float, float, float]]] = {corner: [] for corner in LIFT_CORNERS}
+    for lifted_corner in CALIBRATION_SEQUENCE:
+        vector = _normalize_tuple(samples[lifted_corner])
+        projected_x, projected_y = _project_vector(vector, basis_x, basis_y)
+        for corner in LIFT_CORNERS:
+            target = target_lift_mm if corner == lifted_corner else 0.0
+            rows_by_corner[corner].append((projected_x, projected_y, target))
+
+    coefficients = {corner: _solve_2d_least_squares(rows_by_corner[corner]) for corner in LIFT_CORNERS}
+    return level_vector, coefficients
+
+
+def _solve_2d_least_squares(rows: list[tuple[float, float, float]]) -> tuple[float, float]:
+    if len(rows) < 2:
+        raise RuntimeError("Insufficient calibration rows to solve the orientation model.")
+
+    sxx = sum(x * x for x, _, _ in rows)
+    syy = sum(y * y for _, y, _ in rows)
+    sxy = sum(x * y for x, y, _ in rows)
+    sxt = sum(x * target for x, _, target in rows)
+    syt = sum(y * target for _, y, target in rows)
+
+    det = (sxx * syy) - (sxy * sxy)
+    if abs(det) < 1e-9:
+        raise RuntimeError("Calibration data is degenerate; repeat calibration with cleaner samples.")
+
+    a = ((sxt * syy) - (syt * sxy)) / det
+    b = ((syt * sxx) - (sxt * sxy)) / det
+    return a, b
+
+
+def _normalize_vector(vector: dict[str, float]) -> tuple[float, float, float]:
+    return _normalize_tuple((vector["x"], vector["y"], vector["z"]))
+
+
+def _normalize_tuple(vector: tuple[float, float, float]) -> tuple[float, float, float]:
+    length = math.sqrt((vector[0] * vector[0]) + (vector[1] * vector[1]) + (vector[2] * vector[2]))
+    if length <= 0:
+        raise RuntimeError("Invalid zero-length gravity vector in calibration data.")
+    return (vector[0] / length, vector[1] / length, vector[2] / length)
+
+
+def _build_level_basis(
+    level_vector: tuple[float, float, float],
+) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    level = _normalize_tuple(level_vector)
+    reference = (0.0, 0.0, 1.0)
+
+    if abs(_dot(level, reference)) > 0.9:
+        reference = (0.0, 1.0, 0.0)
+
+    basis_x = _normalize_tuple(_cross(reference, level))
+    basis_y = _normalize_tuple(_cross(level, basis_x))
+    return basis_x, basis_y
+
+
+def _project_vector(
+    vector: tuple[float, float, float],
+    basis_x: tuple[float, float, float],
+    basis_y: tuple[float, float, float],
+) -> tuple[float, float]:
+    return _dot(vector, basis_x), _dot(vector, basis_y)
+
+
+def _dot(left: tuple[float, float, float], right: tuple[float, float, float]) -> float:
+    return (left[0] * right[0]) + (left[1] * right[1]) + (left[2] * right[2])
+
+
+def _cross(left: tuple[float, float, float], right: tuple[float, float, float]) -> tuple[float, float, float]:
+    return (
+        (left[1] * right[2]) - (left[2] * right[1]),
+        (left[2] * right[0]) - (left[0] * right[2]),
+        (left[0] * right[1]) - (left[1] * right[0]),
     )
 
 

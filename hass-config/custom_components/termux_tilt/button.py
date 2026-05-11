@@ -29,6 +29,24 @@ BUTTONS: tuple[TermuxTiltButtonDescription, ...] = (
         icon="mdi:car-brake-alert",
         press_method="async_set_zero",
     ),
+    TermuxTiltButtonDescription(
+        key="start_calibration",
+        name="Start calibration",
+        icon="mdi:ruler-square-compass",
+        press_method="async_start_calibration",
+    ),
+    TermuxTiltButtonDescription(
+        key="capture_calibration_step",
+        name="Capture calibration step",
+        icon="mdi:content-save-check",
+        press_method="async_capture_calibration_step",
+    ),
+    TermuxTiltButtonDescription(
+        key="cancel_calibration",
+        name="Cancel calibration",
+        icon="mdi:cancel",
+        press_method="async_cancel_calibration",
+    ),
 )
 
 

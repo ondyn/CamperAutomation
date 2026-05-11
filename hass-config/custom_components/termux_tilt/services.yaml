@@ -41,3 +41,46 @@ stop_sampling:
       required: false
       selector:
         text:
+
+start_calibration:
+  name: Start calibration
+  description: Start the guided calibration workflow for phone orientation mapping.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry ID when multiple tilt entries exist.
+      required: false
+      selector:
+        text:
+    target_lift_mm:
+      name: Target lift (mm)
+      description: Optional wheel lift target used during calibration captures (default 100 mm).
+      required: false
+      selector:
+        number:
+          min: 20
+          max: 500
+          step: 1
+          unit_of_measurement: mm
+
+capture_calibration_step:
+  name: Capture calibration step
+  description: Capture the current phone orientation for the active calibration step.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry ID when multiple tilt entries exist.
+      required: false
+      selector:
+        text:
+
+cancel_calibration:
+  name: Cancel calibration
+  description: Cancel the active calibration workflow and discard collected samples.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry ID when multiple tilt entries exist.
+      required: false
+      selector:
+        text:

@@ -17,7 +17,8 @@ class TermuxTiltCard extends HTMLElement {
       rear_left_entity: "sensor.van_tilt_meter_rear_left_lift",
       rear_right_entity: "sensor.van_tilt_meter_rear_right_lift",
       set_zero_button_entity: "button.van_tilt_meter_set_zero",
-      sampling_switch_entity: "switch.van_tilt_meter_live_sampling"
+      sampling_switch_entity: "switch.van_tilt_meter_live_sampling",
+      calibration_source_entity: "sensor.van_tilt_meter_front_left_lift"
     };
   }
 
@@ -27,8 +28,7 @@ class TermuxTiltCard extends HTMLElement {
       "front_right_entity",
       "rear_left_entity",
       "rear_right_entity",
-      "set_zero_button_entity",
-      "sampling_switch_entity"
+      "set_zero_button_entity"
     ];
 
     for (const key of required) {
@@ -75,7 +75,7 @@ class TermuxTiltCard extends HTMLElement {
   }
 
   _sampledAt() {
-    const state = this._hass?.states?.[this._config.front_left_entity];
+    const state = this._hass?.states?.[this._config.calibration_source_entity || this._config.front_left_entity];
     const sampledAt = state?.attributes?.sampled_at;
     if (!sampledAt) {
       return "No sample yet";
@@ -111,6 +111,27 @@ class TermuxTiltCard extends HTMLElement {
     this._callService("switch", "turn_on", this._config.sampling_switch_entity);
   }
 
+  _callTiltService(service) {
+    this._hass.callService("termux_tilt", service, {});
+  }
+
+  _calibrationState() {
+    const state = this._hass?.states?.[this._config.calibration_source_entity || this._config.front_left_entity];
+    const attrs = state?.attributes || {};
+    return {
+      active: Boolean(attrs.calibration_active),
+      hasModel: Boolean(attrs.calibration_has_model),
+      step: attrs.calibration_step,
+      stepIndex: Number.isFinite(Number(attrs.calibration_step_index)) ? Number(attrs.calibration_step_index) : 0,
+      totalSteps: Number.isFinite(Number(attrs.calibration_total_steps)) ? Number(attrs.calibration_total_steps) : 0,
+      instruction: attrs.calibration_instruction || "",
+      progress: Number.isFinite(Number(attrs.calibration_progress)) ? Number(attrs.calibration_progress) : 0,
+      targetLiftMm: Number.isFinite(Number(attrs.calibration_target_lift_mm)) ? Number(attrs.calibration_target_lift_mm) : 100,
+      lastError: attrs.calibration_last_error || "",
+      completedAt: attrs.calibration_completed_at || ""
+    };
+  }
+
   _render() {
     if (!this.shadowRoot || !this._config) {
       return;
@@ -121,6 +142,10 @@ class TermuxTiltCard extends HTMLElement {
     const rl = this._valueCm(this._config.rear_left_entity);
     const rr = this._valueCm(this._config.rear_right_entity);
     const samplingOn = this._isSamplingOn();
+    const calibration = this._calibrationState();
+    const calibrationPercent = Math.max(0, Math.min(100, Math.round(calibration.progress * 100)));
+    const targetLiftCm = (calibration.targetLiftMm / 10).toFixed(1);
+    const completedText = calibration.completedAt ? new Date(calibration.completedAt).toLocaleString() : "never";
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -229,6 +254,13 @@ class TermuxTiltCard extends HTMLElement {
           gap: 10px;
         }
 
+        .calibration-buttons {
+          display: grid;
+          grid-template-columns: 1fr 1fr 1fr;
+          gap: 8px;
+          margin-top: 10px;
+        }
+
         .buttons button {
           border: none;
           border-radius: 10px;
@@ -249,6 +281,50 @@ class TermuxTiltCard extends HTMLElement {
 
         .buttons button.secondary {
           background: var(--tilt-danger);
+        }
+
+        .buttons button.neutral {
+          background: var(--tilt-accent-strong);
+        }
+
+        .buttons button.warn {
+          background: #b91c1c;
+        }
+
+        .buttons button:disabled {
+          opacity: 0.45;
+          cursor: not-allowed;
+        }
+
+        .calibration {
+          margin-top: 12px;
+          border-radius: 10px;
+          padding: 10px;
+          border: 1px solid rgba(14, 165, 233, 0.25);
+          background: rgba(255, 255, 255, 0.45);
+          color: var(--tilt-text);
+          font-size: 0.82rem;
+        }
+
+        .calibration-title {
+          font-weight: 700;
+          margin-bottom: 4px;
+          font-size: 0.88rem;
+        }
+
+        .calibration-line {
+          margin-top: 2px;
+          color: var(--tilt-muted);
+        }
+
+        .calibration-line strong {
+          color: var(--tilt-text);
+        }
+
+        .error {
+          margin-top: 6px;
+          color: #991b1b;
+          font-weight: 600;
         }
 
         .sampling {
@@ -283,6 +359,22 @@ class TermuxTiltCard extends HTMLElement {
         </div>
 
         ${this._config.sampling_switch_entity ? `<div class="sampling">Live sampling: ${samplingOn ? "ON (auto-stops after 5 min)" : "OFF"}</div>` : ""}
+
+        <div class="calibration">
+          <div class="calibration-title">Phone Mount Calibration</div>
+          <div class="calibration-line"><strong>Status:</strong> ${calibration.active ? "Running" : (calibration.hasModel ? "Saved" : "Not calibrated")}</div>
+          <div class="calibration-line"><strong>Target lift:</strong> ${targetLiftCm} cm per wheel step</div>
+          <div class="calibration-line"><strong>Progress:</strong> ${calibrationPercent}% ${calibration.active && calibration.totalSteps > 0 ? `(${Math.min(calibration.stepIndex + 1, calibration.totalSteps)}/${calibration.totalSteps})` : ""}</div>
+          <div class="calibration-line"><strong>Instruction:</strong> ${calibration.instruction || "Press Init calibration to begin."}</div>
+          <div class="calibration-line"><strong>Last completed:</strong> ${completedText}</div>
+          ${calibration.lastError ? `<div class="error">Calibration error: ${calibration.lastError}</div>` : ""}
+
+          <div class="buttons calibration-buttons">
+            <button id="calib-init" class="neutral">Init calibration</button>
+            <button id="calib-capture" ${calibration.active ? "" : "disabled"}>Capture step</button>
+            <button id="calib-cancel" class="warn" ${calibration.active ? "" : "disabled"}>Cancel</button>
+          </div>
+        </div>
       </ha-card>
     `;
 
@@ -292,6 +384,18 @@ class TermuxTiltCard extends HTMLElement {
 
     this.shadowRoot.getElementById("setzero")?.addEventListener("click", () => {
       this._callService("button", "press", this._config.set_zero_button_entity);
+    });
+
+    this.shadowRoot.getElementById("calib-init")?.addEventListener("click", () => {
+      this._callTiltService("start_calibration");
+    });
+
+    this.shadowRoot.getElementById("calib-capture")?.addEventListener("click", () => {
+      this._callTiltService("capture_calibration_step");
+    });
+
+    this.shadowRoot.getElementById("calib-cancel")?.addEventListener("click", () => {
+      this._callTiltService("cancel_calibration");
     });
   }
 }
