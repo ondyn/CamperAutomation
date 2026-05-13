@@ -24,6 +24,12 @@ LOG_DIR="${ROOT_DIR}/provisioning/logs"
 ORCHESTRATOR_LOG="${LOG_DIR}/usb-provision-$(date +%Y%m%d-%H%M%S).log"
 mkdir -p "${LOG_DIR}"
 
+# Load .env from repo root for secrets (SSH_PWD, etc.)
+if [ -f "${ROOT_DIR}/.env" ]; then
+  # shellcheck disable=SC1091
+  set -a; source "${ROOT_DIR}/.env"; set +a
+fi
+
 SKIP_HOTSPOT=0
 SKIP_DEBLOAT=0
 SKIP_BOOTSTRAP=0
@@ -121,7 +127,11 @@ run_bootstrap_via_adb() {
   termux_bootstrap="${TERMUX_BASE_PATH}/files/home/bootstrap_termux.sh"
 
   if [ -z "${PROVISION_SSH_PASSWORD}" ]; then
-    PROVISION_SSH_PASSWORD="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)"
+    PROVISION_SSH_PASSWORD="${SSH_PWD:-}"
+  fi
+  if [ -z "${PROVISION_SSH_PASSWORD}" ]; then
+    echo "ERROR: SSH_PWD is not set in .env and PROVISION_SSH_PASSWORD is not provided." >&2
+    exit 1
   fi
 
   # Clear any stale host key before bootstrap generates a fresh SSH server key.

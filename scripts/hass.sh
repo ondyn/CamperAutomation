@@ -1,4 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/sh
+# Home Assistant launcher for Termux runtime.
+set -eu
+
 termux-wake-lock
 
 PREFIX="/data/data/com.termux/files/usr"
@@ -132,7 +135,7 @@ log "Starting Home Assistant with config ${HASS_CONFIG_DIR}"
 # app UIDs. HA 2026.x uses HassAsyncDNSResolver->AsyncDualMDNSResolver->AsyncResolver
 # for all non-.local hostnames. Replacing AsyncResolver.resolve at the class level
 # fixes the entire resolver chain without breaking any HA imports.
-SITE_PKG="$(${HOME_DIR}/.venv/bin/python -c 'import site; print(site.getsitepackages()[0])')" 2>/dev/null
+SITE_PKG="$("${HOME_DIR}/.venv/bin/python" -c 'import site; print(site.getsitepackages()[0])' 2>/dev/null || true)"
 if [ -n "${SITE_PKG}" ] && [ -d "${SITE_PKG}" ]; then
 	cat > "${SITE_PKG}/sitecustomize.py" <<'SC_EOF'
 import sys

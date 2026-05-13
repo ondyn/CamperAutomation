@@ -43,7 +43,7 @@ Or run individual steps:
    - `provisioning/adb/04_setup_hotspot_boot_magisk.sh` – hotspot autostart (Magisk)
    - `provisioning/adb/05_diagnose_hotspot.sh` – test which hotspot command works
 
-2. Manual Termux bootstrap on phone (see `instalation.md`).
+2. Manual Termux bootstrap on phone (see `docs/setup/installation.md`).
    - Bootstrap script is automatically pushed by `provisioning/adb/03b_push_termux_bootstrap.sh`.
    - Preferred command in Termux: `bash ~/bootstrap_termux.sh`.
    - Bootstrap now enables `root` and `x11` repos and writes deterministic APT sources for main/root/x11 before the first `pkg update`.
@@ -59,8 +59,9 @@ Or run individual steps:
 
 ## Notes
 
-- Phone-side backup: `~/scripts/termux-backup.sh [target-dir]`
+- Phone-side configuration backup (HA config/database, Tailscale config, Termux startup config): `~/scripts/termux-backup.sh [target-dir]`
 - Phone-side restore: `~/scripts/termux-restore.sh <backup-dir>`
+- Full Termux snapshot backup over ADB (root/Magisk required): `provisioning/adb/09_backup_termux_full_adb.sh`
 - Local backup download (single archive to `./backup` by default):
    - `PHONE_USER=<TERMUX_USER> provisioning/ssh/35_backup_termux_to_local.sh`
 - Local restore upload + apply:

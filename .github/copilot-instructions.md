@@ -9,7 +9,7 @@ Primary target state:
 - ESPHome nodes provide sensing and control for van systems (temperature, water, rain, GPS-related telemetry, heater integration, leveling, and future modules like camera/OBD).
 
 ## Current Architecture Snapshot
-- Android/Termux install and operational notes are in instalation.md.
+- Android/Termux install and operational notes are in docs/setup/installation.md.
 - Boot scripts for Termux:Boot are in boot/ with boot/00-bootstrap as primary orchestrator.
 - Home Assistant runtime helper scripts are in scripts/ (bootstrap_services.sh, hass.sh, update_ip.py legacy).
 - Home Assistant config is in hass-config/.

@@ -120,7 +120,8 @@ fi
 echo
 SSH_PASSWORD="${TERMUX_SSH_PASSWORD:-}"
 if [ -z "$SSH_PASSWORD" ]; then
-  SSH_PASSWORD="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)"
+  echo "ERROR: TERMUX_SSH_PASSWORD is not set. Pass SSH_PWD from .env via the provisioning orchestrator." >&2
+  exit 1
 fi
 
 if printf '%s\n%s\n' "$SSH_PASSWORD" "$SSH_PASSWORD" | passwd >/dev/null 2>&1; then

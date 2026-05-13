@@ -22,6 +22,6 @@ provisioning/apks/*.apk
 # Local backup archives
 backup/
 
-
+.env
 __pycache__
 chargerconnect

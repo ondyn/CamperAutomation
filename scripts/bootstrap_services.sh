@@ -1,4 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/sh
+# Runtime bootstrap orchestrator: hotspot -> VPN -> SSH -> Home Assistant.
+set -eu
+
 termux-wake-lock
 
 PREFIX="/data/data/com.termux/files/usr"

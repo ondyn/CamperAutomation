@@ -1,4 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/sh
+# Termux:Boot entrypoint delegating startup orchestration to bootstrap_services.sh.
+set -eu
+
 termux-wake-lock
 echo "Termux boot: running supervised bootstrap..."
 sh /data/data/com.termux/files/home/scripts/bootstrap_services.sh

@@ -6,6 +6,7 @@
 # Verified working on Xiaomi Mi 11 (M2011K2G), Android 13 / MIUI, Magisk 30.7.
 # cmd wifi start-softap requires: <ssid> <open|wpa2|wpa3|...> <passphrase>
 # The tethering service automatically picks up the AP and enables internet forwarding.
+set -eu
 
 LOG_TAG="camperautomation-hotspot"
 SOFTAP_XML="/data/misc/apexdata/com.android.wifi/WifiConfigStoreSoftAp.xml"
@@ -21,11 +22,11 @@ if [ ! -f "${SOFTAP_XML}" ]; then
 fi
 
 # Parse SSID: stored as &quot;Mi 11&quot; in XML, strip &quot; entities to get plain name
-SSID=$(grep 'name="WifiSsid"' "${SOFTAP_XML}" | sed 's/.*>\(.*\)<\/string>.*/\1/' | sed 's/&quot;//g')
+SSID="$(grep 'name="WifiSsid"' "${SOFTAP_XML}" | sed 's/.*>\(.*\)<\/string>.*/\1/' | sed 's/&quot;//g' || true)"
 # Parse passphrase
-PASS=$(grep 'name="Passphrase"' "${SOFTAP_XML}" | sed 's/.*>\(.*\)<\/string>.*/\1/')
+PASS="$(grep 'name="Passphrase"' "${SOFTAP_XML}" | sed 's/.*>\(.*\)<\/string>.*/\1/' || true)"
 # Parse security type (0=open, 1=wpa2, 2=wpa3, 3=wpa3_transition)
-SECTYPE=$(grep 'name="SecurityType"' "${SOFTAP_XML}" | sed 's/.*value="\([0-9]*\)".*/\1/')
+SECTYPE="$(grep 'name="SecurityType"' "${SOFTAP_XML}" | sed 's/.*value="\([0-9]*\)".*/\1/' || true)"
 
 case "${SECTYPE}" in
   0) SEC="open"  ;;

@@ -510,9 +510,9 @@ PYEOF
 "$VENV/bin/python" -m pip freeze --all | LC_ALL=C sort > "$PYTHON_FREEZE_PATH"
 REMOTE_INSTALL
 
-scp "${SCP_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}:~/.provisioning/locks/homeassistant-${HA_VERSION}.python-freeze.txt" "${PYTHON_FREEZE_FILE}"
+"${SCP_TRANSPORT[@]}" "${SCP_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}:~/.provisioning/locks/homeassistant-${HA_VERSION}.python-freeze.txt" "${PYTHON_FREEZE_FILE}"
 
-ssh "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'bash -lc "source ~/.venv/bin/activate && nohup sshd >/dev/null 2>&1 || true"'
+"${SSH_TRANSPORT[@]}" "${SSH_OPTS[@]}" "${PHONE_USER}@${PHONE_HOST}" 'bash -lc "source ~/.venv/bin/activate && nohup sshd >/dev/null 2>&1 || true"'
 
 cat <<EOF
 Remote install finished.

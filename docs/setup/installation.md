@@ -261,7 +261,8 @@ TERMUX_X11_REPO=https://packages.termux.dev/apt/termux-x11 \
 bash ~/bootstrap_termux.sh
 ```
 
-Create a full Termux + Home Assistant backup after provisioning (phone-side):
+Create a configuration backup after provisioning (phone-side).
+This captures Home Assistant config/database, Tailscale config, and core Termux startup config:
 
 ```sh
 ~/scripts/termux-backup.sh
@@ -271,6 +272,13 @@ Restore from a previous backup after reinstalling Termux (phone-side):
 
 ```sh
 ~/scripts/termux-restore.sh ~/storage/shared/CamperAutomationBackups/<timestamp>
+```
+
+Create a full Termux snapshot backup over ADB (laptop-side, requires root/Magisk):
+
+```sh
+cd /Users/ondrejhnyk/Documents/CamperAutomation
+./provisioning/adb/09_backup_termux_full_adb.sh
 ```
 
 Create a backup archive on phone and download it to laptop (default local folder: `./backup`):
