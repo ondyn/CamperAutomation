@@ -96,6 +96,31 @@ start_ssh() {
   fi
 }
 
+ensure_hotspot() {
+  # Backup hotspot trigger: runs after Magisk service.d fires.
+  # Needed because service.d sometimes doesn't log or execute reliably on MIUI.
+  # Calls the same service.d script directly under root so logic is centralised.
+  if ! command_exists su || ! su -c 'true' >/dev/null 2>&1; then
+    log "Hotspot: root not available, skipping"
+    return
+  fi
+
+  # wlan1 = AP interface when hotspot is active
+  if su -c 'ip link show wlan1' >/dev/null 2>&1; then
+    log "Hotspot: already active (wlan1 up)"
+    return
+  fi
+
+  SERVICE_SCRIPT="/data/adb/service.d/80-hotspot-on-boot.sh"
+  if su -c "test -x \"${SERVICE_SCRIPT}\"" >/dev/null 2>&1; then
+    log "Hotspot: wlan1 not found, running boot script..."
+    su -c "${SERVICE_SCRIPT}" >>"${LOG_FILE}" 2>&1 &
+    log "Hotspot: start triggered (background)"
+  else
+    log "Hotspot: boot script not found at ${SERVICE_SCRIPT}"
+  fi
+}
+
 start_hass() {
   if [ -x "${HASS_CTL}" ]; then
     log "HA: starting via hassctl"
@@ -140,6 +165,7 @@ start_hass() {
 }
 
 log "Bootstrap: begin"
+ensure_hotspot
 start_vpn
 start_ssh
 start_hass

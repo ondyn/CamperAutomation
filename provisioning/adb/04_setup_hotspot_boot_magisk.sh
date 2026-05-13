@@ -26,11 +26,16 @@ fi
 adb push "${SCRIPT_LOCAL}" "${SCRIPT_REMOTE}"
 
 install_with_su() {
-  local su_args="$1"
-  adb shell su ${su_args} "mkdir -p /data/adb/service.d && cat ${SCRIPT_REMOTE} > /data/adb/service.d/80-hotspot-on-boot.sh && chmod 755 /data/adb/service.d/80-hotspot-on-boot.sh"
+  # IMPORTANT: pass the entire command as ONE string to adb shell so adb invokes
+  # Android's /bin/sh -c "su -c '...'" rather than passing su/-c/cmd as separate
+  # args.  The separate-args form runs in a different SELinux context that cannot
+  # write to adb_data_file, causing "Permission denied" even as root.
+  # Also use 'cp' not 'cat >': shell redirects in inner su -c can be blocked.
+  local cmd="mkdir -p /data/adb/service.d && cp ${SCRIPT_REMOTE} /data/adb/service.d/80-hotspot-on-boot.sh && chmod 755 /data/adb/service.d/80-hotspot-on-boot.sh"
+  adb shell "su -c '${cmd}'"
 }
 
-if install_with_su "-c"; then
+if install_with_su; then
   echo "Installed Magisk boot script: /data/adb/service.d/80-hotspot-on-boot.sh"
   echo "Reboot the phone and verify with: adb shell su -c 'logcat -d | grep camperautomation-hotspot'"
   exit 0

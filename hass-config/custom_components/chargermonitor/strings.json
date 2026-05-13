@@ -1,0 +1,29 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Charger Monitor",
+        "description": "Configure Charger Monitor. The chargermonitor app must be running on this device before adding this integration.",
+        "data": {
+          "scan_interval": "Poll interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to charger API at 127.0.0.1:8765. Start the chargermonitor app first."
+    },
+    "abort": {
+      "single_instance_allowed": "Only one Charger Monitor instance is allowed."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Charger Monitor Options",
+        "data": {
+          "scan_interval": "Poll interval (seconds)"
+        }
+      }
+    }
+  }
+}

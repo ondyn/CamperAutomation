@@ -2,13 +2,35 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import 'background_main.dart';
+import 'charger_service.dart';
 import 'protocol.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await _configureBackgroundService();
   runApp(const ChargerMonitorApp());
+}
+
+Future<void> _configureBackgroundService() async {
+  final FlutterBackgroundService bgService = FlutterBackgroundService();
+  await bgService.configure(
+    androidConfiguration: AndroidConfiguration(
+      onStart: backgroundMain,
+      autoStart: false,
+      isForegroundMode: true,
+      // No custom notificationChannelId → plugin creates FOREGROUND_DEFAULT channel automatically
+      initialNotificationTitle: 'Charger Monitor',
+      initialNotificationContent: 'Running',
+      foregroundServiceNotificationId: 888,
+    ),
+    iosConfiguration: IosConfiguration(autoStart: false),
+  );
+  await bgService.startService();
 }
 
 class ChargerMonitorApp extends StatelessWidget {
@@ -355,7 +377,10 @@ class _DeviceScanPageState extends State<DeviceScanPage> {
                   onTap: () {
                     Navigator.of(context).push(
                       MaterialPageRoute<void>(
-                        builder: (_) => DeviceDashboardPage(device: device),
+                        builder: (_) => DeviceDashboardPage(
+                          deviceMac: device.remoteId.str,
+                          deviceName: name,
+                        ),
                       ),
                     );
                   },
@@ -369,312 +394,117 @@ class _DeviceScanPageState extends State<DeviceScanPage> {
 }
 
 class DeviceDashboardPage extends StatefulWidget {
-  const DeviceDashboardPage({super.key, required this.device});
+  const DeviceDashboardPage({
+    super.key,
+    required this.deviceMac,
+    required this.deviceName,
+  });
 
-  final BluetoothDevice device;
+  final String deviceMac;
+  final String deviceName;
 
   @override
   State<DeviceDashboardPage> createState() => _DeviceDashboardPageState();
 }
 
 class _DeviceDashboardPageState extends State<DeviceDashboardPage> {
-  final ProtocolParser _parser = ProtocolParser();
-  static const String _serviceUuid = '000018F0-0000-1000-8000-00805F9B34FB';
-  static const String _notifyUuid = '00002AF0-0000-1000-8000-00805F9B34FB';
-  static const String _writeUuid = '00002AF1-0000-1000-8000-00805F9B34FB';
-  static const Map<int, String> _deviceTypeNames = <int, String>{
-    0x01: 'MPPT 5012',
-    0x02: 'MPPT 5020',
-    0x03: 'MPPT 5010',
-    0x04: 'Two-in-One',
-    0x05: 'B-to-B',
-    0x06: 'AC',
-    0x07: 'Dual Battery',
-    0x10: 'Two-in-One Solar',
-    0x11: 'Two-in-One B-to-B',
-  };
-
-  BluetoothCharacteristic? _notifyCharacteristic;
-  BluetoothCharacteristic? _writeCharacteristic;
-  StreamSubscription<List<int>>? _notifySub;
-  StreamSubscription<BluetoothConnectionState>? _connectionStateSub;
-  Timer? _heartbeatTimer;
-  Timer? _bootstrapBaseDataTimer;
-  Timer? _reconnectTimer;
-
-  bool _isDisposed = false;
-  bool _isConnecting = false;
-  int _reconnectAttempt = 0;
-  int _rxBytes = 0;
-  int _rxFrames = 0;
-
-  String _connectionState = 'Connecting...';
-  int? _deviceType;
+  StreamSubscription<Map<String, dynamic>?>? _stateSub;
+  String _connectionState = 'Connecting…';
+  int? _deviceTypeCode;
+  String? _deviceTypeName;
   RealtimeData? _realtime;
-  String? _error;
+  int _rxFrames = 0;
+  int _rxBytes = 0;
 
   @override
   void initState() {
     super.initState();
-    _observeConnectionState();
-    _connect();
+    // Tell background service which device to connect to.
+    FlutterBackgroundService().invoke('set_device', <String, dynamic>{
+      'mac': widget.deviceMac,
+    });
+    // Listen for state updates from the background service.
+    _stateSub = FlutterBackgroundService()
+        .on('state_update')
+        .listen((Map<String, dynamic>? data) {
+      if (data == null || !mounted) return;
+      _applyState(data);
+    });
   }
 
   @override
   void dispose() {
-    _isDisposed = true;
-    _connectionStateSub?.cancel();
-    _notifySub?.cancel();
-    _heartbeatTimer?.cancel();
-    _bootstrapBaseDataTimer?.cancel();
-    _reconnectTimer?.cancel();
-    widget.device.disconnect();
+    _stateSub?.cancel();
     super.dispose();
   }
 
-  void _observeConnectionState() {
-    _connectionStateSub = widget.device.connectionState.listen((
-      BluetoothConnectionState state,
-    ) {
-      if (_isDisposed || !mounted) {
-        return;
-      }
+  void _applyState(Map<String, dynamic> data) {
+    final String conn = data['connection'] as String? ?? 'disconnected';
+    final String? dt = data['device_type'] as String?;
+    final int? dtCode = (data['device_type_code'] as num?)?.toInt();
+    final Map<String, dynamic>? rawData =
+        data['data'] as Map<String, dynamic>?;
+    final Map<String, dynamic>? rawFlags =
+        data['flags'] as Map<String, dynamic>?;
 
-      if (state == BluetoothConnectionState.connected) {
-        setState(() {
-          _connectionState = 'Connected';
-        });
-        _reconnectAttempt = 0;
-        _reconnectTimer?.cancel();
-      } else if (state == BluetoothConnectionState.disconnected) {
-        _handleDisconnected();
-      }
-    });
-  }
-
-  Future<void> _resetTransportSubscriptions() async {
-    _heartbeatTimer?.cancel();
-    _heartbeatTimer = null;
-    _bootstrapBaseDataTimer?.cancel();
-    _bootstrapBaseDataTimer = null;
-    await _notifySub?.cancel();
-    _notifySub = null;
-    _notifyCharacteristic = null;
-    _writeCharacteristic = null;
-  }
-
-  void _handleDisconnected() {
-    _resetTransportSubscriptions();
-    _scheduleReconnect();
-  }
-
-  void _scheduleReconnect() {
-    if (_isDisposed || _reconnectTimer != null) {
-      return;
+    RealtimeData? rd;
+    if (rawData != null && rawFlags != null) {
+      try {
+        rd = RealtimeData(
+          batteryCurrentA:
+              (rawData['battery_current_a'] as num).toDouble(),
+          batteryVoltageV:
+              (rawData['battery_voltage_v'] as num).toDouble(),
+          assistantBatteryCurrentA:
+              (rawData['assistant_battery_current_a'] as num).toDouble(),
+          assistantBatteryVoltageV:
+              (rawData['assistant_battery_voltage_v'] as num).toDouble(),
+          solarPanelPowerW:
+              (rawData['solar_panel_power_w'] as num).toInt(),
+          solarPanelVoltageV:
+              (rawData['solar_panel_voltage_v'] as num).toDouble(),
+          loadCurrentA: (rawData['load_current_a'] as num).toDouble(),
+          loadVoltageV: (rawData['load_voltage_v'] as num).toDouble(),
+          loadPowerW: (rawData['load_power_w'] as num).toInt(),
+          startingBatteryVoltageV:
+              (rawData['starting_battery_voltage_v'] as num).toDouble(),
+          startingBatteryVoltage2V:
+              (rawData['starting_battery_voltage2_v'] as num).toDouble(),
+          chargeState: rawFlags['charge_state'] as bool,
+          assistantChargeState:
+              rawFlags['assistant_charge_state'] as bool,
+          fullCharge: rawFlags['full_charge'] as bool,
+          overTemp: rawFlags['over_temp'] as bool,
+          batteryOverPressure:
+              rawFlags['battery_over_pressure'] as bool,
+          pvOverPressure: rawFlags['pv_over_pressure'] as bool,
+          batteryUnderVoltage:
+              rawFlags['battery_under_voltage'] as bool,
+          chargeCapacity:
+              (rawData['charge_capacity_ah'] as num).toDouble(),
+          chargeEnergy: (rawData['charge_energy_wh'] as num).toDouble(),
+          assistantChargeCapacity:
+              (rawData['assistant_charge_capacity_ah'] as num).toDouble(),
+          assistantChargeEnergy:
+              (rawData['assistant_charge_energy_wh'] as num).toDouble(),
+        );
+      } catch (_) {}
     }
-
-    _reconnectAttempt++;
-    final int seconds = _reconnectAttempt <= 2 ? 2 : 5;
 
     setState(() {
-      _connectionState = 'Disconnected (reconnect in ${seconds}s)';
+      _connectionState = switch (conn) {
+        'connected' => 'Connected',
+        'connecting' => 'Connecting…',
+        _ => 'Disconnected',
+      };
+      _deviceTypeCode = dtCode;
+      _deviceTypeName = dt;
+      if (rd != null) {
+        _realtime = rd;
+        _rxFrames++;
+        _rxBytes += 40;
+      }
     });
-
-    _reconnectTimer = Timer(Duration(seconds: seconds), () {
-      _reconnectTimer = null;
-      _connect();
-    });
-  }
-
-  Future<void> _connect() async {
-    if (_isDisposed || _isConnecting) {
-      return;
-    }
-
-    _isConnecting = true;
-    try {
-      await _resetTransportSubscriptions();
-
-      setState(() {
-        _connectionState = 'Connecting...';
-      });
-
-      await widget.device.connect(timeout: const Duration(seconds: 12));
-      final List<BluetoothService> services =
-          await widget.device.discoverServices();
-
-      _resolveProtocolCharacteristics(services);
-
-      if (_notifyCharacteristic == null || _writeCharacteristic == null) {
-        throw StateError(
-          'Required protocol characteristics were not found. '
-          'Discovered: ${_describeServices(services)}',
-        );
-      }
-
-      await _notifyCharacteristic!.setNotifyValue(true);
-      _notifySub = _notifyCharacteristic!.onValueReceived.listen(_onNotifyData);
-
-      await _send(ChargerProtocol.requestDeviceType);
-      await Future<void>.delayed(const Duration(milliseconds: 250));
-      await _send(ChargerProtocol.requestBaseData);
-
-      // Bootstraps data flow on devices that do not immediately push base data.
-      _bootstrapBaseDataTimer = Timer.periodic(
-        const Duration(seconds: 2),
-        (Timer t) {
-          if (_realtime != null || _isDisposed) {
-            t.cancel();
-            return;
-          }
-          _send(ChargerProtocol.requestBaseData);
-          if (t.tick >= 8) {
-            t.cancel();
-          }
-        },
-      );
-
-      _heartbeatTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-        _send(ChargerProtocol.requestHeartBeat);
-      });
-
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _connectionState = 'Connected';
-        _error = null;
-      });
-    } catch (e) {
-      if (!mounted) {
-        _isConnecting = false;
-        return;
-      }
-      setState(() {
-        _connectionState = 'Disconnected';
-        _error = e.toString();
-      });
-      _scheduleReconnect();
-    } finally {
-      _isConnecting = false;
-    }
-  }
-
-  Future<void> _send(List<int> bytes) async {
-    final BluetoothCharacteristic? writer = _writeCharacteristic;
-    if (writer == null) {
-      return;
-    }
-    await writer.write(bytes, withoutResponse: false);
-  }
-
-  void _resolveProtocolCharacteristics(List<BluetoothService> services) {
-    BluetoothCharacteristic? notifyByPropertyInService;
-    BluetoothCharacteristic? writeByPropertyInService;
-
-    for (final BluetoothService service in services) {
-      final bool isProtocolService = _uuidEquals(service.uuid.str, _serviceUuid);
-      for (final BluetoothCharacteristic c in service.characteristics) {
-        if (_uuidEquals(c.uuid.str, _notifyUuid)) {
-          _notifyCharacteristic = c;
-        }
-        if (_uuidEquals(c.uuid.str, _writeUuid)) {
-          _writeCharacteristic = c;
-        }
-
-        if (c.properties.notify || c.properties.indicate) {
-          if (isProtocolService) {
-            notifyByPropertyInService ??= c;
-          }
-        }
-
-        if (c.properties.write || c.properties.writeWithoutResponse) {
-          if (isProtocolService) {
-            writeByPropertyInService ??= c;
-          }
-        }
-      }
-    }
-
-    _notifyCharacteristic ??= notifyByPropertyInService;
-    _writeCharacteristic ??= writeByPropertyInService;
-  }
-
-  String _describeServices(List<BluetoothService> services) {
-    return services
-        .map((BluetoothService s) {
-          final String chars = s.characteristics
-              .map(
-                (BluetoothCharacteristic c) =>
-                    '${c.uuid.str}[n=${c.properties.notify},'
-                    'i=${c.properties.indicate},'
-                    'w=${c.properties.write},'
-                    'wwr=${c.properties.writeWithoutResponse}]',
-              )
-              .join(', ');
-          return '{service:${s.uuid.str}, chars:[$chars]}';
-        })
-        .join('; ');
-  }
-
-  bool _uuidEquals(String discovered, String expected) {
-    final String a = _normalize(discovered).replaceAll('-', '');
-    final String b = _normalize(expected).replaceAll('-', '');
-
-    if (a == b) {
-      return true;
-    }
-
-    final int? shortA = _shortUuid16(a);
-    final int? shortB = _shortUuid16(b);
-    if (shortA != null && shortB != null && shortA == shortB) {
-      return true;
-    }
-
-    return false;
-  }
-
-  int? _shortUuid16(String value) {
-    if (value.isEmpty) {
-      return null;
-    }
-
-    final String trimmed = value.toUpperCase();
-    if (trimmed.length <= 8) {
-      return int.tryParse(trimmed, radix: 16);
-    }
-
-    if (trimmed.length == 32) {
-      final String leading32 = trimmed.substring(0, 8);
-      return int.tryParse(leading32, radix: 16);
-    }
-
-    return null;
-  }
-
-  void _onNotifyData(List<int> data) {
-    _rxBytes += data.length;
-    for (final List<int> frame in _parser.appendAndExtract(data)) {
-      _rxFrames++;
-      if (frame.length == 4 && frame[0] == 0xFF && frame[1] == 0xE1) {
-        setState(() {
-          _deviceType = frame[2] & 0xFF;
-        });
-      } else if (frame.length == 40 && frame[0] == 0xFF && frame[1] == 0xE2) {
-        try {
-          final RealtimeData parsed = RealtimeData.fromFrame(frame);
-          setState(() {
-            _realtime = parsed;
-          });
-        } catch (_) {
-          // Ignore malformed frames.
-        }
-      }
-    }
-  }
-
-  String _normalize(String uuid) {
-    return uuid.toUpperCase();
   }
 
   @override
@@ -683,47 +513,44 @@ class _DeviceDashboardPageState extends State<DeviceDashboardPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.device.platformName),
+        title: Text(widget.deviceName),
       ),
       body: SafeArea(
-        child: _error != null
-            ? Center(child: Text(_error!))
-            : ListView(
-                padding: const EdgeInsets.all(16),
-                children: <Widget>[
-                  Text(
-                    widget.device.remoteId.str,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 8),
-                  _StatusCard(
-                    connectionState: _connectionState,
-                    deviceType: _deviceType,
-                    deviceTypeName: _deviceType == null
-                        ? null
-                        : (_deviceTypeNames[_deviceType!] ?? 'Unknown Type'),
-                    rxBytes: _rxBytes,
-                    rxFrames: _rxFrames,
-                  ),
-                  const SizedBox(height: 12),
-                  if (d == null)
-                    const Card(
-                      child: Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Text('Waiting for realtime protocol frames...'),
-                      ),
-                    )
-                  else ...<Widget>[
-                    _MetricGrid(data: d),
-                    const SizedBox(height: 12),
-                    _FlagCard(data: d),
-                  ],
-                ],
-              ),
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: <Widget>[
+            Text(
+              widget.deviceMac,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            _StatusCard(
+              connectionState: _connectionState,
+              deviceType: _deviceTypeCode,
+              deviceTypeName: _deviceTypeName,
+              rxBytes: _rxBytes,
+              rxFrames: _rxFrames,
+            ),
+            const SizedBox(height: 12),
+            if (d == null)
+              const Card(
+                child: Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text('Waiting for realtime protocol frames…'),
+                ),
+              )
+            else ...<Widget>[
+              _MetricGrid(data: d),
+              const SizedBox(height: 12),
+              _FlagCard(data: d),
+            ],
+          ],
+        ),
       ),
     );
   }
 }
+
 
 class _StatusCard extends StatelessWidget {
   const _StatusCard({
