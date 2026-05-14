@@ -1,12 +1,14 @@
 class TermuxCameraGalleryCard extends HTMLElement {
   setConfig(config) {
-    if (!config.sensor_entity) {
-      throw new Error("sensor_entity is required");
+    const sensorEntity = config.sensor_entity || config.entity;
+    if (!sensorEntity) {
+      throw new Error("entity (or sensor_entity) is required");
     }
     this._config = {
       title: "Van Camera",
       service: "termux_camera_photo.capture_photo",
       ...config,
+      sensor_entity: sensorEntity,
     };
   }
 
@@ -82,6 +84,9 @@ class TermuxCameraGalleryCard extends HTMLElement {
           grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
           gap: 8px;
         }
+        .thumb-wrap {
+          position: relative;
+        }
         .thumb {
           display: block;
           text-decoration: none;
@@ -92,6 +97,19 @@ class TermuxCameraGalleryCard extends HTMLElement {
           object-fit: cover;
           border-radius: 8px;
           border: 1px solid var(--divider-color);
+        }
+        .delete-btn {
+          position: absolute;
+          top: 4px;
+          right: 4px;
+          border: 0;
+          border-radius: 6px;
+          padding: 4px 6px;
+          font-size: 0.75rem;
+          line-height: 1;
+          background: var(--error-color);
+          color: var(--primary-text-color);
+          cursor: pointer;
         }
         .empty {
           color: var(--secondary-text-color);
@@ -110,9 +128,12 @@ class TermuxCameraGalleryCard extends HTMLElement {
           ${photos
             .map(
               (photo) => `
-                <a class="thumb" href="${photo.url}" target="_blank" rel="noopener noreferrer" title="${photo.filename}">
-                  <img src="${photo.url}" alt="${photo.filename}">
-                </a>
+                <div class="thumb-wrap">
+                  <a class="thumb" href="${photo.url}" target="_blank" rel="noopener noreferrer" title="${photo.filename}">
+                    <img src="${photo.url}" alt="${photo.filename}">
+                  </a>
+                  <button class="delete-btn" data-filename="${photo.filename}" title="Delete ${photo.filename}">Del</button>
+                </div>
               `,
             )
             .join("")}
@@ -130,7 +151,35 @@ class TermuxCameraGalleryCard extends HTMLElement {
         await this._hass.callService(domain, service, this._config.service_data || {});
       };
     }
+
+    const deleteButtons = this._root.querySelectorAll(".delete-btn");
+    for (const deleteButton of deleteButtons) {
+      deleteButton.onclick = async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const filename = deleteButton.getAttribute("data-filename");
+        if (!filename) {
+          return;
+        }
+        const confirmed = window.confirm(`Delete ${filename}?`);
+        if (!confirmed) {
+          return;
+        }
+        const payload = { filename };
+        if (attrs.entry_id) {
+          payload.entry_id = attrs.entry_id;
+        }
+        await this._hass.callService("termux_camera_photo", "delete_photo", payload);
+      };
+    }
   }
 }
 
 customElements.define("termux-camera-gallery-card", TermuxCameraGalleryCard);
+
+window.customCards = window.customCards || [];
+window.customCards.push({
+  type: "termux-camera-gallery-card",
+  name: "Termux Camera Gallery",
+  description: "Capture photos and browse recent captures from Termux Camera Photo.",
+});

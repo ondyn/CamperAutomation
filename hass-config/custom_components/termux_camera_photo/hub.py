@@ -19,6 +19,7 @@ from .const import (
     DEFAULT_WWW_SUBDIR,
     DOMAIN,
     EVENT_PHOTO_CAPTURED,
+    EVENT_PHOTO_DELETED,
     MAX_KEEP_LATEST,
 )
 
@@ -83,6 +84,7 @@ class TermuxCameraPhotoHub:
     @property
     def extra_state_attributes(self) -> dict:
         return {
+            "entry_id": self.entry.entry_id,
             "camera_id": self.camera_id,
             "www_subdir": self.www_subdir,
             "output_dir": str(self.output_dir),
@@ -155,6 +157,40 @@ class TermuxCameraPhotoHub:
                 },
             )
             self._notify_listeners()
+
+    async def async_delete_photo(self, filename: str) -> None:
+        raw_name = str(filename).strip()
+        if not raw_name:
+            self.last_error = "filename is required"
+            self._notify_listeners()
+            return
+
+        candidate_name = Path(raw_name).name
+        if candidate_name != raw_name:
+            self.last_error = "Invalid filename"
+            self._notify_listeners()
+            return
+
+        target_path = self.output_dir / candidate_name
+        if not target_path.exists() or not target_path.is_file():
+            self.last_error = f"Photo not found: {candidate_name}"
+            self._refresh_recent_photos()
+            self._notify_listeners()
+            return
+
+        await self.hass.async_add_executor_job(target_path.unlink)
+        self.last_error = None
+        self._refresh_recent_photos()
+        self.hass.bus.async_fire(
+            EVENT_PHOTO_DELETED,
+            {
+                "entry_id": self.entry.entry_id,
+                "filename": candidate_name,
+                "absolute_path": str(target_path),
+                "deleted_at": dt_util.utcnow().isoformat(),
+            },
+        )
+        self._notify_listeners()
 
     async def async_get_latest_image_bytes(self) -> bytes | None:
         if self.latest_photo is None:

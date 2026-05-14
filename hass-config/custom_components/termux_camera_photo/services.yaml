@@ -17,3 +17,20 @@ capture_photo:
           min: 0
           max: 8
           step: 1
+
+delete_photo:
+  name: Delete photo
+  description: Delete a captured photo from gallery and filesystem.
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry ID when multiple camera entries exist.
+      required: false
+      selector:
+        text:
+    filename:
+      name: Filename
+      description: Exact photo filename to delete (for example photo_20260514T130000Z.jpg).
+      required: true
+      selector:
+        text:

@@ -6,7 +6,15 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 import homeassistant.helpers.config_validation as cv
 
-from .const import ATTR_CAMERA_ID, ATTR_ENTRY_ID, DOMAIN, PLATFORMS, SERVICE_CAPTURE_PHOTO
+from .const import (
+    ATTR_CAMERA_ID,
+    ATTR_ENTRY_ID,
+    ATTR_FILENAME,
+    DOMAIN,
+    PLATFORMS,
+    SERVICE_CAPTURE_PHOTO,
+    SERVICE_DELETE_PHOTO,
+)
 from .hub import TermuxCameraPhotoHub
 
 
@@ -36,13 +44,17 @@ async def _async_update_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
 
 def _async_register_services(hass: HomeAssistant) -> None:
-    if hass.services.has_service(DOMAIN, SERVICE_CAPTURE_PHOTO):
-        return
-
     service_schema = vol.Schema(
         {
             vol.Optional(ATTR_ENTRY_ID): cv.string,
             vol.Optional(ATTR_CAMERA_ID): vol.Coerce(int),
+        }
+    )
+
+    delete_service_schema = vol.Schema(
+        {
+            vol.Optional(ATTR_ENTRY_ID): cv.string,
+            vol.Required(ATTR_FILENAME): cv.string,
         }
     )
 
@@ -52,7 +64,22 @@ def _async_register_services(hass: HomeAssistant) -> None:
         for hub in _iter_target_hubs(hass, entry_id):
             await hub.async_capture_photo(camera_id=camera_id)
 
-    hass.services.async_register(DOMAIN, SERVICE_CAPTURE_PHOTO, handle_capture_photo, schema=service_schema)
+    async def handle_delete_photo(call) -> None:
+        entry_id = call.data.get(ATTR_ENTRY_ID)
+        filename = call.data[ATTR_FILENAME]
+        for hub in _iter_target_hubs(hass, entry_id):
+            await hub.async_delete_photo(filename=filename)
+
+    if not hass.services.has_service(DOMAIN, SERVICE_CAPTURE_PHOTO):
+        hass.services.async_register(DOMAIN, SERVICE_CAPTURE_PHOTO, handle_capture_photo, schema=service_schema)
+
+    if not hass.services.has_service(DOMAIN, SERVICE_DELETE_PHOTO):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_DELETE_PHOTO,
+            handle_delete_photo,
+            schema=delete_service_schema,
+        )
 
 
 def _iter_target_hubs(hass: HomeAssistant, entry_id: str | None) -> list[TermuxCameraPhotoHub]:
