@@ -1,0 +1,14 @@
+title: Van Camera
+views:
+  - title: Camera
+    path: van-camera
+    cards:
+      - type: custom:termux-camera-gallery-card
+        title: Van Camera
+        sensor_entity: sensor.van_camera_photos_stored
+        service: termux_camera_photo.capture_photo
+      - type: picture-entity
+        entity: camera.van_camera_latest_picture
+        name: Latest photo
+        show_state: false
+        camera_view: auto

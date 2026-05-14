@@ -1,0 +1,17 @@
+alias: Van camera - notify Pixel when photo captured
+id: van_camera_notify_pixel_on_capture
+description: Send the newest captured image as a mobile notification to Pixel 8 Pro.
+mode: queued
+max: 5
+trigger:
+  - platform: event
+    event_type: termux_camera_photo.photo_captured
+condition: []
+action:
+  - action: notify.mobile_app_pixel_8_pro
+    data:
+      title: Camper camera
+      message: New van photo captured
+      data:
+        image: "{{ trigger.event.data.url }}"
+        clickAction: "{{ trigger.event.data.url }}"
