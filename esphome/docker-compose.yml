@@ -10,10 +10,14 @@ services:
   #   ports:
   #     - "8888:8123"
   esphome:
-    image: ghcr.io/esphome/esphome:2025.4.0
+    # image: ghcr.io/esphome/esphome:2025.4.0
     # image: ghcr.io/esphome/esphome:2024.12.0
+    image: ghcr.io/esphome/esphome:2026.4.5
     volumes:
       - ./config-esp:/config:rw
+      - esphome_data:/config/.esphome
+      - esphome_platformio:/root/.platformio
+      - esphome_uv_cache:/root/.cache/uv
       # - ./config-esp/hymertest.yaml:/config/hymertest.yaml:rw
       # - ./config-esp/secrets.yaml:/config/secrets.yaml:rw
       - /etc/localtime:/etc/localtime:ro
@@ -23,3 +27,8 @@ services:
       - "8889:6052"
     # privileged: true
     # network_mode: host
+
+volumes:
+  esphome_data:
+  esphome_platformio:
+  esphome_uv_cache:

@@ -41,6 +41,13 @@ wifi:
   ssid: !secret hymer_wifi_ssid
   password: !secret hymer_wifi_password
 
+  # Static IP to avoid DHCP reassignment on Android hotspot reboot
+  manual_ip:
+    static_ip: 10.129.28.200
+    gateway: 10.129.28.1
+    subnet: 255.255.255.0
+    dns1: 10.129.28.1
+
   # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
     ssid: "Esphymer Fallback Hotspot"

@@ -167,9 +167,80 @@ start_hass() {
   log "HA: failed to create screen session (check ~/logs/hass-runner.log)"
 }
 
+# Apply the ESP subnet routing fix: add 10.129.28.1/32 host alias on wlan1,
+# the connected route in table 254, and the ip rule — without flushing Android's
+# tethering IP (10.39.17.x/24) which would upset the hostapd/dnsmasq daemons.
+_apply_esp_subnet_fix() {
+  FIXED_AP_IP="10.129.28.1"
+  AP_IFACE="wlan1"
+  ESP_SUBNET="10.129.28.0/24"
+
+  # 1. /32 host alias: phone responds to ARP for 10.129.28.1 (ESP default gateway)
+  if ! su -c "ip -4 addr show ${AP_IFACE} 2>/dev/null | grep -q '${FIXED_AP_IP}/'" 2>/dev/null; then
+    su -c "ip addr add ${FIXED_AP_IP}/32 dev ${AP_IFACE}" >/dev/null 2>&1 \
+      && log "AP subnet: added ${FIXED_AP_IP}/32 alias to ${AP_IFACE}" \
+      || log "AP subnet: WARNING - could not add ${FIXED_AP_IP}/32 (SELinux or race)"
+  fi
+
+  # 2. Connected route in main table so HA traffic for ESP subnet uses wlan1
+  if ! su -c "ip route show table 254 2>/dev/null | grep -qF '${ESP_SUBNET}'" 2>/dev/null; then
+    su -c "ip route add ${ESP_SUBNET} dev ${AP_IFACE} table 254" >/dev/null 2>&1 || true
+    log "AP subnet: added route ${ESP_SUBNET} dev ${AP_IFACE} table 254"
+  fi
+
+  # 3. Policy rule: redirect loopback-originated ESP traffic to main table (stays
+  #    across tethering daemon runs because ip rules are not cleaned by netd)
+  if ! su -c "ip rule show 2>/dev/null | grep -qF 'to ${ESP_SUBNET}'" 2>/dev/null; then
+    su -c "ip rule add to ${ESP_SUBNET} table 254 priority 1000" >/dev/null 2>&1 || true
+    log "AP subnet: added ip rule to ${ESP_SUBNET} table 254 priority 1000"
+  fi
+}
+
+ensure_ap_subnet() {
+  if ! command_exists su || ! su -c 'true' >/dev/null 2>&1; then
+    log "AP subnet: root not available, skipping"
+    return
+  fi
+
+  if ! su -c 'ip link show wlan1' >/dev/null 2>&1; then
+    log "AP subnet: wlan1 not up, skipping"
+    return
+  fi
+
+  _apply_esp_subnet_fix
+  log "AP subnet: fix applied"
+}
+
+start_esp_subnet_watchdog() {
+  # Background loop: re-applies the /32 alias + route every 60 s.
+  # Heals the config after Android's tethering daemon removes our additions
+  # (typically 2-10 min after boot).  Runs for the lifetime of the Termux session.
+  FIXED_AP_IP="10.129.28.1"
+  AP_IFACE="wlan1"
+  ESP_SUBNET="10.129.28.0/24"
+  _WD_LOG="${LOG_FILE}"
+
+  (
+    while true; do
+      sleep 60
+      if su -c "ip link show ${AP_IFACE}" >/dev/null 2>&1; then
+        if ! su -c "ip -4 addr show ${AP_IFACE} 2>/dev/null | grep -q '${FIXED_AP_IP}/'" 2>/dev/null; then
+          su -c "ip addr add ${FIXED_AP_IP}/32 dev ${AP_IFACE}" >/dev/null 2>&1 || true
+          su -c "ip route add ${ESP_SUBNET} dev ${AP_IFACE} table 254" >/dev/null 2>&1 || true
+          printf '%s AP subnet watchdog: re-applied %s/32 (tethering daemon reset)\n' \
+            "$(date '+%Y-%m-%d %H:%M:%S')" "${FIXED_AP_IP}" >> "${_WD_LOG}" 2>/dev/null || true
+        fi
+      fi
+    done
+  ) &
+  log "AP subnet watchdog: started (PID=$!)"
+}
+
 log "Bootstrap: begin"
 ensure_hotspot
+ensure_ap_subnet
 start_vpn
 start_ssh
 start_hass
+start_esp_subnet_watchdog
 log "Bootstrap: complete"

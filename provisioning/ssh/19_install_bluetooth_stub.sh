@@ -4,10 +4,16 @@ set -euo pipefail
 # Deploy the Android/Termux bluetooth stub custom component into the active
 # Home Assistant config on the phone.
 #
-# This stub overrides the built-in HA bluetooth integration with a no-op
-# that returns True from async_setup without touching DBus or importing
-# bluetooth_adapters.  It makes the bluetooth domain appear "set up" so that
-# ESPHome (which lists bluetooth as a hard dependency) can load normally.
+# This stub:
+#   1. Makes the bluetooth domain appear "set up" (returns True from async_setup)
+#      without touching DBus or importing bluetooth_adapters.
+#      → ESPHome (which lists bluetooth as a hard dependency) loads normally.
+#
+#   2. Registers a duck-typed no-op BluetoothManager via
+#      habluetooth.central_manager.set_manager().
+#      → Prevents "RuntimeError: BluetoothManager has not been set" that
+#        crashes ESPHome's on_connect callback and keeps devices stuck
+#        as unavailable after reconnect on Android/Termux (HA 2026.x).
 #
 # Usage:
 #   PHONE_HOST=192.168.43.1 PHONE_USER=u0_a123 ./provisioning/ssh/19_install_bluetooth_stub.sh

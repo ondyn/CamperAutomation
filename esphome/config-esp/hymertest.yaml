@@ -5,7 +5,7 @@ esphome:
 esp32:
   board: esp32-c3-devkitm-1
   framework:
-    type: arduino
+    type: esp-idf
 
 # Enable logging
 logger:
@@ -14,6 +14,13 @@ logger:
 api:
   encryption:
     key: "LiBBwwCWU9Vu06ar8B/Gxur7BviehFqA6KjkPK+C49Y="
+  # Send keepalive pings every 10s so HA detects dropped connections within ~30s
+  # instead of the default ~80s (20s ping + 60s response timeout).
+  reboot_timeout: 0s
+
+# Enable mDNS service advertisement for discovery
+mdns:
+  disabled: false
 
 ota:
   - platform: esphome
@@ -23,10 +30,62 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
 
+  # reboot_timeout: 5min
+  # fast_connect: true
+  # power_save_mode: none # NONE/LIGHT/HIGH
+
+  # Static IP to avoid DHCP reassignment on Android hotspot reboot
+  manual_ip:
+    static_ip: 10.129.28.201
+    gateway: 10.129.28.1
+    subnet: 255.255.255.0
+    dns1: 10.129.28.1
+
   # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
     ssid: "Hymertest Fallback Hotspot"
     password: "148t0UNwiBCW"
 
 captive_portal:
+
+output:
+  - platform: gpio
+    id: onboard_led_output
+    pin:
+      number: GPIO8
+      inverted: true
+
+switch:
+  - platform: output
+    id: onboard_led_switch
+    name: "HymerTest Onboard LED"
+    output: onboard_led_output
+    restore_mode: ALWAYS_OFF
+
+sensor:
+  - platform: template
+    id: simulated_temperature
+    name: "HymerTest Simulated Temperature"
+    device_class: temperature
+    state_class: measurement
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    update_interval: 5s
+    lambda: |-
+      static float temp = 21.0;
+      static bool rising = true;
+
+      if (rising) {
+        temp += 0.2;
+        if (temp >= 27.0) {
+          rising = false;
+        }
+      } else {
+        temp -= 0.2;
+        if (temp <= 18.0) {
+          rising = true;
+        }
+      }
+
+      return temp;
     
