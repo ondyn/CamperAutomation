@@ -18,6 +18,7 @@ This folder contains operational and implementation documentation for the camper
 ## Architecture
 
 - `architecture/charger-integration-plan.md`: plan for integrating charger monitor data into Home Assistant.
+- `architecture/vent-rf-integration.md`: 433 MHz RF protocol analysis and ESPHome/HA integration plan for the roof vent fan.
 
 ## Status Snapshots
 
