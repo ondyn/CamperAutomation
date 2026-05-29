@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 # fix-espidf.sh — applied at container startup via docker-compose entrypoint override.
 #
-# Problem 1: ESP-IDF 5.5.4 shipped with duplicate source file names:
+# Problem 1 (ESP-IDF 5.5.4 only): duplicate source file names:
 #   efuse/esp32c3/esp_efuse_fields.c  AND  efuse/src/esp_efuse_fields.c
 #   efuse/esp32c3/esp_efuse_utility.c AND  efuse/src/esp_efuse_utility.c
 # Fix: rename the chip-specific copies to avoid the basename collision, then
 # update sources.cmake to reference the renamed files.
 #
-# Problem 2: ESP-IDF 5.5.x has system_time.c in two components, producing the
-# same object filename:
+# Problem 2 (ESP-IDF 5.5.x only): system_time.c in two components:
 #   components/esp_system/system_time.c
 #   components/esp_timer/src/system_time.c
 # Fix: rename the esp_timer copy and update its CMakeLists.txt.
 #
+# ESP-IDF 6.0.x reorganised these components so neither collision exists;
+# the functions below are no-ops on 6.0.x (file/dir guards exit early).
 # Both fixes are idempotent — safe to run on every container start.
 
 set -euo pipefail

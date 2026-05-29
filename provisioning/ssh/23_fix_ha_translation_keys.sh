@@ -56,13 +56,19 @@ src_path = sys.argv[1]
 with open(src_path, "r") as f:
     content = f.read()
 
+is_upgrade = False
+
 if "_resolve_key_refs" in content and "_load_common_strings" in content:
-    print("SKIP: patch already applied (both markers found).")
-    sys.exit(0)
+    # v3: direct flat-dict lookup (fixes prefixed keys like component.X.Y).
+    if "# v3: direct-flat-lookup" in content:
+        print("SKIP: patch v3 already applied.")
+        sys.exit(0)
+    print("Upgrading patch to v3 (direct flat-dict lookup for component refs)...")
+    is_upgrade = True
 
 if "_resolve_key_refs" in content:
     print("Updating existing patch (adding import-time load fix)...")
-    # Remove old lazy-load version and replace with eager load
+    # Remove old resolver block and replace with v3
     import re as _re
     old_block = _re.search(
         r"# ---- Android/Termux pip-install fix.*?# ---- End fix -{3,}\n\n",
@@ -109,17 +115,33 @@ _COMMON_STRINGS: dict[str, str] = _load_common_strings()
 
 
 def _resolve_key_refs(flat: dict[str, str]) -> dict[str, str]:
-    """Replace [%key:X::Y::Z%] values with human-readable resolved strings."""
-    if not _COMMON_STRINGS:
-        return flat
-    result: dict[str, str] = {}
-    for k, v in flat.items():
-        if isinstance(v, str) and _KEY_RE.fullmatch(v):
-            lookup = v[6:-2].replace("::", ".")
-            result[k] = _COMMON_STRINGS.get(lookup, v)
-        else:
-            result[k] = v
-    return result
+    """Replace [%key:X::Y::Z%] refs with human-readable strings.
+
+    # v3: direct-flat-lookup
+
+    _build_category_cache calls recursive_flatten(prefix, resource) with
+    prefix = 'component.{component}.{category}.' so ALL keys in flat carry
+    that full prefix, e.g.:
+      component.binary_sensor.entity_component.gas.state.on  -> 'Detected'
+      component.binary_sensor.entity_component.motion.state.on
+          -> '[%key:component::binary_sensor::entity_component::gas::state::on%]'
+
+    Resolution order:
+    1. Direct lookup of the full dotted path in flat (self-referential refs).
+    2. Lookup in strings.json (common::state::off, etc.).
+    """
+
+    def _resolve(v: str, depth: int = 0) -> str:
+        if depth > 3 or not isinstance(v, str) or not _KEY_RE.fullmatch(v):
+            return v
+        lookup = v[6:-2].replace("::", ".")
+        # 1. Full-path lookup in flat (handles component-scoped self-refs)
+        if lookup in flat:
+            return _resolve(flat[lookup], depth + 1)
+        # 2. strings.json common refs (common::state::off, etc.)
+        return _COMMON_STRINGS.get(lookup, v)
+
+    return {k: _resolve(v) for k, v in flat.items()}
 
 # ---- End fix ---------------------------------------------------------------
 
@@ -135,19 +157,21 @@ content = content.replace(
 )
 
 # 3. Call _resolve_key_refs after recursive_flatten in _build_category_cache
-MARKER = (
-    "                flat = recursive_flatten(prefix, resource)\n"
-    "                flat = self._validate_placeholders(language, flat, component_cache)"
-)
-REPLACEMENT = (
-    "                flat = recursive_flatten(prefix, resource)\n"
-    "                flat = _resolve_key_refs(flat)\n"
-    "                flat = self._validate_placeholders(language, flat, component_cache)"
-)
-if MARKER not in content:
-    print("ERROR: _build_category_cache marker not found", file=sys.stderr)
-    sys.exit(1)
-content = content.replace(MARKER, REPLACEMENT, 1)
+#    (skip on upgrade — the call was already injected by a previous patch)
+if not is_upgrade:
+    MARKER = (
+        "                flat = recursive_flatten(prefix, resource)\n"
+        "                flat = self._validate_placeholders(language, flat, component_cache)"
+    )
+    REPLACEMENT = (
+        "                flat = recursive_flatten(prefix, resource)\n"
+        "                flat = _resolve_key_refs(flat)\n"
+        "                flat = self._validate_placeholders(language, flat, component_cache)"
+    )
+    if MARKER not in content:
+        print("ERROR: _build_category_cache marker not found", file=sys.stderr)
+        sys.exit(1)
+    content = content.replace(MARKER, REPLACEMENT, 1)
 
 # Verify
 assert "_resolve_key_refs(flat)" in content
@@ -161,8 +185,11 @@ PYEOF
 
 echo "Applying translation.py patch..."
 
-# Pull current translation.py from device
-adb pull "${HA_TRANS}" /tmp/ha_translation_current.py >/dev/null 2>&1
+# Pull current translation.py from device (needs root; stage via /data/local/tmp first)
+SRC_STAGE="/data/local/tmp/ha_translation_src.py"
+adb shell "su -c 'cp ${HA_TRANS} ${SRC_STAGE} && chmod 644 ${SRC_STAGE}'"
+adb pull "${SRC_STAGE}" /tmp/ha_translation_current.py >/dev/null
+adb shell "rm -f ${SRC_STAGE}" >/dev/null 2>&1 || true
 
 # Apply patch locally
 python3 /tmp/ha_translation_patch.py /tmp/ha_translation_current.py
@@ -180,7 +207,13 @@ if [ "${SKIP_RESTART:-0}" = "1" ]; then
   echo "SKIP_RESTART=1 — skipping HA restart."
 else
   echo "Restarting Home Assistant..."
-  adb shell "run-as com.termux sh /data/data/com.termux/files/home/scripts/hassctl.sh restart" || true
+  # TMPDIR must point inside Termux's writable tree so 'sh' can create heredoc
+  # temp files (<<EOF blocks in hassctl.sh). Without it, adb shell uses the
+  # system /data/local/tmp which is root-only, causing "Permission denied".
+  TERMUX_HOME="/data/data/com.termux/files/home"
+  TERMUX_BIN="/data/data/com.termux/files/usr/bin"
+  TERMUX_TMP="/data/data/com.termux/files/usr/tmp"
+  adb shell "run-as com.termux env TMPDIR=${TERMUX_TMP} HOME=${TERMUX_HOME} ${TERMUX_BIN}/sh ${TERMUX_HOME}/scripts/hassctl.sh restart" || true
   echo "HA restart triggered."
 fi
 

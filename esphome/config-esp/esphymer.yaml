@@ -15,6 +15,7 @@ esp32:
   # board: lolin_c3_mini
   framework:
     type: esp-idf
+    version: "6.0.1"  # 6.0.x restructured esp_timer/esp_system sources; no more system_time.c collision
     #type: arduino
 
 # esp32:
@@ -25,8 +26,8 @@ esp32:
 #     version: recommended
 
 # Enable logging
-logger:
-  level: DEBUG
+# logger:
+#   level: DEBUG
 
 # Enable Home Assistant API
 api:
@@ -92,7 +93,11 @@ i2c:
 
 one_wire:
   - platform: gpio
-    pin: GPIO10
+    pin:
+      number: GPIO10
+      mode:
+        input: true
+        pullup: true  # ~45 kΩ internal pull-up; works for short 1-wire runs without external resistor
     id: bus_b
 
 switch:
@@ -146,18 +151,21 @@ sensor:
     address: 0x8b3c01f095401e28
     name: "T1"
     unit_of_measurement: "°C"
+    # update_interval: 5min  # long interval reduces blocking bus-reset attempts when wire is faulted
 
   - platform: dallas_temp
     one_wire_id: bus_b
     address: 0xa83c01f095b01928
     name: "T2"
     unit_of_measurement: "°C"
+    # update_interval: 5min
 
   - platform: dallas_temp
     one_wire_id: bus_b
     address: 0xdb3c01f0952a3328
     name: "T3"
     unit_of_measurement: "°C"
+    # update_interval: 5min
 
   - platform: mpu6050
     address: 0x68

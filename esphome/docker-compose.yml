@@ -12,7 +12,8 @@ services:
   esphome:
     # image: ghcr.io/esphome/esphome:2025.4.0
     # image: ghcr.io/esphome/esphome:2024.12.0
-    image: ghcr.io/esphome/esphome:2026.4.5
+    # image: ghcr.io/esphome/esphome:2026.4.5
+    image: ghcr.io/esphome/esphome:2026.5.1
     # fix-espidf.sh patches a duplicate-source-file bug in ESP-IDF 5.5.4 that
     # causes "Multiple ways to build the same target" errors.  It is idempotent
     # and hands off to the real /entrypoint.sh when done.
