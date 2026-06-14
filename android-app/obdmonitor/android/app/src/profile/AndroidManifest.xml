@@ -1,0 +1,3 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Profile builds don't need extra permissions beyond main manifest -->
+</manifest>

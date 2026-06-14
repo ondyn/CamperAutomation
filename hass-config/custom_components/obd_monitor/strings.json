@@ -1,0 +1,29 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "OBD Monitor",
+        "description": "Connect to the obdmonitor Flutter app running on this device.\n\nMake sure the obdmonitor app is running and the ELM327 adapter is selected.",
+        "data": {
+          "scan_interval": "Scan interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the obdmonitor app REST server (127.0.0.1:8766). Make sure the app is running."
+    },
+    "abort": {
+      "single_instance_allowed": "Only one OBD Monitor instance is allowed."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "OBD Monitor Options",
+        "data": {
+          "scan_interval": "Scan interval (seconds)"
+        }
+      }
+    }
+  }
+}
