@@ -1,0 +1,95 @@
+esphome:
+  name: vent-sniffer
+  friendly_name: Vent Sniffer
+
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: esp-idf
+    version: "6.0.1"
+
+# Verbose logging so every decoded RF frame is visible in the log stream
+logger:
+  level: DEBUG
+
+# Home Assistant API — reuse shared enc_key from secrets
+api:
+  encryption:
+    key: !secret enc_key
+  reboot_timeout: 0s
+
+mdns:
+  disabled: false
+
+ota:
+  - platform: esphome
+    password: !secret ota_pwd
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Static IP — keep distinct from hymertest (10.129.28.201)
+  manual_ip:
+    static_ip: 10.129.28.202
+    gateway: 10.129.28.1
+    subnet: 255.255.255.0
+    dns1: 10.129.28.1
+
+  ap:
+    ssid: "vent-sniffer-fallback"
+    password: !secret ap_pwd
+
+captive_portal:
+
+# ---------------------------------------------------------------------------
+# RF Receiver — MX-RM-5V (433.92 MHz superregenerative)
+#
+# Power (CRITICAL — do not use 3.3V):
+#   VCC  → ESP32-C3 VIN / 5V pin (USB-powered; module REQUIRES 5V)
+#   GND  → ESP32-C3 GND
+#
+#   At 3.3V the superregenerative oscillator runs out-of-spec: the AGC
+#   amplifies background RF noise onto DATA continuously, flooding the
+#   log with spurious single-pulse Pronto frames even with no remote
+#   nearby.  5V is not optional.
+#
+# Data line — voltage divider required (ESP32-C3 GPIO is NOT 5V-tolerant):
+#
+#   MX-RM-5V DATA
+#         │
+#        10 kΩ
+#         │
+#         ├──── GPIO4  (3.33 V when HIGH → safe for 3.3 V GPIO)
+#         │
+#        20 kΩ
+#         │
+#        GND
+#
+#   Divider ratio: 5 V × 20k/(10k+20k) = 3.33 V ✓
+#
+# Antenna:
+#   Solder a 17.3 cm straight copper wire to the ANT pad on the module
+#   (quarter-wave at 433.92 MHz).  Place the module ≤20 cm from the vent
+#   remote during capture to compensate for the noisy superregenerative frontend.
+# ---------------------------------------------------------------------------
+remote_receiver:
+  pin:
+    number: GPIO4
+    inverted: true   # try true if false yields nothing — some RX modules are active-LOW
+  # Limit to protocols we actually need; avoids Pronto matching every noise spike.
+  # Add 'raw' temporarily if rc_switch yields nothing — paste raw timings for
+  # manual protocol analysis.
+  # Only decode RC-Switch (EV1527 / OOK fixed-code remotes).
+  # Pronto was matching 433 MHz band background interference as valid frames;
+  # restricting to rc_switch eliminates that noise from the log entirely.
+  # If rc_switch logs nothing after pressing the remote, temporarily change to:
+  #   dump: all   — to see raw/Pronto timings for manual protocol analysis.
+  dump:
+    - rc_switch
+    # - raw
+  tolerance: 50%     # maximally lenient — narrow back to 25% once codes are captured
+  # No filter during diagnosis — remove once signal is confirmed working
+  # filter: 100us
+  buffer_size: 4kb
+  idle: 4ms

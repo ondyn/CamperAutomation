@@ -9,7 +9,7 @@ Camper van automation stack centered on Home Assistant Core running in Termux on
 - `hass-config/`: Home Assistant config, custom components, and frontend cards.
 - `esphome/config-esp/`: ESPHome node definitions.
 - `provisioning/`: laptop-driven USB/ADB + SSH provisioning automation.
-- `android-app/`: charger-monitor and protocol analysis app artifacts.
+- `android-app/`: charger, battery, and vehicle telemetry companion apps.
 - `docs/`: setup, operations, troubleshooting, architecture, and status docs.
 
 ## Quick Start

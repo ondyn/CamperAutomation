@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Camper automation logo variant 2">
+  <g fill="none" stroke="#0B1F33" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="256" cy="256" r="210"/>
+    <circle cx="256" cy="256" r="124"/>
+    <path d="M132 256h248"/>
+    <path d="M256 132v248"/>
+  </g>
+
+  <path d="M120 292h272l-42 82H162z" fill="#1E8E5A"/>
+
+  <g fill="none" stroke="#0B1F33" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M164 238l58-58 44 44 58-72 62 62"/>
+  </g>
+
+  <g fill="#0B1F33">
+    <rect x="202" y="286" width="124" height="38" rx="14"/>
+    <circle cx="224" cy="332" r="16"/>
+    <circle cx="304" cy="332" r="16"/>
+  </g>
+
+  <path d="M246 368h20v88h-20z" fill="#F4A300"/>
+</svg>

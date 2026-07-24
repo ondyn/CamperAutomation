@@ -1,0 +1,29 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "LiTime Battery",
+        "description": "Configure LiTime Battery. The LiTimeMonitor app must be running on this device before adding this integration.",
+        "data": {
+          "scan_interval": "Poll interval (seconds)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the LiTimeMonitor API at 127.0.0.1:8766. Start LiTimeMonitor first."
+    },
+    "abort": {
+      "single_instance_allowed": "Only one LiTime Battery instance is allowed."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "LiTime Battery Options",
+        "data": {
+          "scan_interval": "Poll interval (seconds)"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,54 @@
+esphome:
+  name: rf-test-rx
+  friendly_name: RF Test Receiver
+
+esp32:
+  board: lolin_c3_mini
+  framework:
+    type: esp-idf
+    version: "6.0.1"
+
+# Radio-only debug node: no Wi-Fi, API, OTA or HA entities.
+logger:
+  level: INFO
+
+# ---------------------------------------------------------------------------
+# RX module wiring (MX-RM-5V / XY-MK-5V or similar 433 MHz OOK):
+#
+#   VCC  -> 5V (REQUIRED - 3.3V commonly causes AGC noise)
+#   GND  -> GND
+#   DATA -> GPIO4 via voltage divider (DATA is often 5V logic):
+#
+#       RX DATA --10k--+-- GPIO4
+#                      |
+#                     20k
+#                      |
+#                     GND
+#
+#   ANT  -> 17.3 cm straight wire (quarter-wave @ 433.92 MHz)
+# ---------------------------------------------------------------------------
+remote_receiver:
+  pin:
+    number: GPIO4
+    inverted: false
+  dump: all
+    # - rc_switch
+  # Stricter timing improves decode quality and reduces short false frames.
+  tolerance: 25%
+  filter: 50us
+  idle: 8ms
+  buffer_size: 8kb
+
+# Simple status LED for local visual debugging.
+output:
+  - platform: gpio
+    pin: GPIO8
+    id: led_output
+
+interval:
+  - interval: 1s
+    then:
+      # Heartbeat: confirms firmware is alive without any network stack.
+      - output.turn_on: led_output
+      - delay: 40ms
+      - output.turn_off: led_output

@@ -24,4 +24,12 @@ backup/
 
 .env
 __pycache__
-chargerconnect
+
+# FVM local SDK caches; keep each app's .fvmrc tracked
+**/.fvm/
+
+# Private third-party application research
+/android-app/chargerconnect/
+/android-app/litimemonitor/analysis/
+/obd-diagnostic/
+/.github/workflows/phase3-windows-runtime.yml
