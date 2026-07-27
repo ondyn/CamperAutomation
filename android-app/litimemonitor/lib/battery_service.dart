@@ -27,20 +27,21 @@ class BatteryState {
   final int? lastUpdateMs;
 
   Map<String, dynamic> toJson() => <String, dynamic>{
-        'connection': connection.jsonValue,
-        'device_name': deviceName,
-        'last_update_ms': lastUpdateMs,
-        'data': telemetry?.toJson(),
-      };
+    'connection': connection.jsonValue,
+    'device_name': deviceName,
+    'last_update_ms': lastUpdateMs,
+    'data': telemetry?.toJson(),
+  };
 }
 
 class LiTimeBatteryService {
-  static final Guid _serviceUuid =
-      Guid('F000FFC0-0451-4000-B000-000000000000');
-  static final Guid _ffc1Uuid =
-      Guid('F000FFC1-0451-4000-B000-000000000000');
-  static final Guid _ffc2Uuid =
-      Guid('F000FFC2-0451-4000-B000-000000000000');
+  static final Guid _legacyServiceUuid = Guid(
+    '0000FFE0-0000-1000-8000-00805F9B34FB',
+  );
+  static final Guid _ffe1Uuid = Guid('0000FFE1-0000-1000-8000-00805F9B34FB');
+  static final Guid _serviceUuid = Guid('F000FFC0-0451-4000-B000-000000000000');
+  static final Guid _ffc1Uuid = Guid('F000FFC1-0451-4000-B000-000000000000');
+  static final Guid _ffc2Uuid = Guid('F000FFC2-0451-4000-B000-000000000000');
 
   final LiTimeFrameParser _parser = LiTimeFrameParser();
   final StreamController<BatteryState> _stateController =
@@ -60,6 +61,50 @@ class LiTimeBatteryService {
 
   Stream<BatteryState> get stateStream => _stateController.stream;
   BatteryState get state => _state;
+
+  Future<void> shutdown() async {
+    final BluetoothCharacteristic? characteristic = _writeCharacteristic;
+    if (_state.connection != BatteryConnectionState.connected ||
+        characteristic == null) {
+      throw StateError('Battery is not connected');
+    }
+    if ((_state.telemetry?.currentA ?? 0) > 0) {
+      throw StateError(
+        'Disconnect the charger before powering off the battery',
+      );
+    }
+
+    _stopped = true;
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    _reconnectTimer?.cancel();
+    try {
+      debugPrint(
+        '[LiTimeBatteryService] Sending shutdown command on '
+        '${characteristic.uuid}',
+      );
+      await characteristic.write(
+        LiTimeProtocol.shutdown(),
+        withoutResponse: false,
+      );
+      await _clearTransport();
+      _emit(
+        BatteryState(
+          connection: BatteryConnectionState.disconnected,
+          deviceName: _state.deviceName,
+          telemetry: _state.telemetry,
+          lastUpdateMs: _state.lastUpdateMs,
+        ),
+      );
+    } catch (error) {
+      _stopped = false;
+      _pollTimer = Timer.periodic(
+        const Duration(seconds: 2),
+        (_) => _requestTelemetry(),
+      );
+      rethrow;
+    }
+  }
 
   void setTargetDevice(String remoteId, {String? name}) {
     _stopped = false;
@@ -105,12 +150,14 @@ class LiTimeBatteryService {
         '[LiTimeBatteryService] Connecting to ${device.remoteId.str} '
         '(attempt ${_reconnectAttempt + 1})',
       );
-      _emit(BatteryState(
-        connection: BatteryConnectionState.connecting,
-        deviceName: _state.deviceName,
-        telemetry: _state.telemetry,
-        lastUpdateMs: _state.lastUpdateMs,
-      ));
+      _emit(
+        BatteryState(
+          connection: BatteryConnectionState.connecting,
+          deviceName: _state.deviceName,
+          telemetry: _state.telemetry,
+          lastUpdateMs: _state.lastUpdateMs,
+        ),
+      );
 
       await device.connect(
         autoConnect: false,
@@ -119,14 +166,14 @@ class LiTimeBatteryService {
       debugPrint('[LiTimeBatteryService] GATT connected');
 
       await _connectionSubscription?.cancel();
-      _connectionSubscription = device.connectionState.listen(
-        (BluetoothConnectionState state) {
-          debugPrint('[LiTimeBatteryService] Connection state: $state');
-          if (!_stopped && state == BluetoothConnectionState.disconnected) {
-            _onDisconnected();
-          }
-        },
-      );
+      _connectionSubscription = device.connectionState.listen((
+        BluetoothConnectionState state,
+      ) {
+        debugPrint('[LiTimeBatteryService] Connection state: $state');
+        if (!_stopped && state == BluetoothConnectionState.disconnected) {
+          _onDisconnected();
+        }
+      });
 
       final int mtu = await device.requestMtu(512);
       debugPrint('[LiTimeBatteryService] MTU: $mtu');
@@ -138,17 +185,19 @@ class LiTimeBatteryService {
       await _configureCharacteristics(services);
 
       if (_writeCharacteristic == null) {
-        throw StateError('No writable LiTime FFC1/FFC2 characteristic found');
+        throw StateError('No writable LiTime characteristic found');
       }
 
       _reconnectTimer?.cancel();
       _reconnectAttempt = 0;
-      _emit(BatteryState(
-        connection: BatteryConnectionState.connected,
-        deviceName: _state.deviceName,
-        telemetry: _state.telemetry,
-        lastUpdateMs: _state.lastUpdateMs,
-      ));
+      _emit(
+        BatteryState(
+          connection: BatteryConnectionState.connected,
+          deviceName: _state.deviceName,
+          telemetry: _state.telemetry,
+          lastUpdateMs: _state.lastUpdateMs,
+        ),
+      );
       await _requestTelemetry();
       _pollTimer = Timer.periodic(
         const Duration(seconds: 2),
@@ -165,14 +214,16 @@ class LiTimeBatteryService {
   Future<void> _configureCharacteristics(
     List<BluetoothService> services,
   ) async {
-    final List<BluetoothCharacteristic> candidates = <BluetoothCharacteristic>[];
+    final List<BluetoothCharacteristic> candidates =
+        <BluetoothCharacteristic>[];
     for (final BluetoothService service in services) {
-      if (service.uuid != _serviceUuid) {
+      if (service.uuid != _legacyServiceUuid && service.uuid != _serviceUuid) {
         continue;
       }
       for (final BluetoothCharacteristic characteristic
           in service.characteristics) {
-        if (characteristic.uuid == _ffc1Uuid ||
+        if (characteristic.uuid == _ffe1Uuid ||
+            characteristic.uuid == _ffc1Uuid ||
             characteristic.uuid == _ffc2Uuid) {
           debugPrint(
             '[LiTimeBatteryService] Characteristic ${characteristic.uuid}: '
@@ -189,7 +240,8 @@ class LiTimeBatteryService {
 
     for (final BluetoothCharacteristic characteristic in candidates) {
       final bool canNotify =
-          characteristic.properties.notify || characteristic.properties.indicate;
+          characteristic.properties.notify ||
+          characteristic.properties.indicate;
       if (canNotify) {
         await characteristic.setNotifyValue(true);
         debugPrint(
@@ -208,8 +260,16 @@ class LiTimeBatteryService {
           characteristic.properties.writeWithoutResponse,
     );
     _writeCharacteristic = writable
-        .where((BluetoothCharacteristic characteristic) =>
-            characteristic.uuid == _ffc1Uuid)
+        .where(
+          (BluetoothCharacteristic characteristic) =>
+              characteristic.uuid == _ffe1Uuid,
+        )
+        .firstOrNull;
+    _writeCharacteristic ??= writable
+        .where(
+          (BluetoothCharacteristic characteristic) =>
+              characteristic.uuid == _ffc1Uuid,
+        )
         .firstOrNull;
     _writeCharacteristic ??= writable.firstOrNull;
     debugPrint(
@@ -230,7 +290,8 @@ class LiTimeBatteryService {
       );
       await characteristic.write(
         LiTimeProtocol.requestTelemetry(),
-        withoutResponse: !characteristic.properties.write &&
+        withoutResponse:
+            !characteristic.properties.write &&
             characteristic.properties.writeWithoutResponse,
       );
     } catch (error) {
@@ -249,12 +310,14 @@ class LiTimeBatteryService {
       }
       try {
         final LiTimeTelemetry telemetry = LiTimeTelemetry.fromFrame(frame);
-        _emit(BatteryState(
-          connection: BatteryConnectionState.connected,
-          deviceName: _state.deviceName,
-          telemetry: telemetry,
-          lastUpdateMs: DateTime.now().millisecondsSinceEpoch,
-        ));
+        _emit(
+          BatteryState(
+            connection: BatteryConnectionState.connected,
+            deviceName: _state.deviceName,
+            telemetry: telemetry,
+            lastUpdateMs: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
       } catch (error) {
         debugPrint('[LiTimeBatteryService] Invalid telemetry: $error');
       }
@@ -279,12 +342,14 @@ class LiTimeBatteryService {
       return;
     }
     _clearTransport();
-    _emit(BatteryState(
-      connection: BatteryConnectionState.disconnected,
-      deviceName: _state.deviceName,
-      telemetry: _state.telemetry,
-      lastUpdateMs: _state.lastUpdateMs,
-    ));
+    _emit(
+      BatteryState(
+        connection: BatteryConnectionState.disconnected,
+        deviceName: _state.deviceName,
+        telemetry: _state.telemetry,
+        lastUpdateMs: _state.lastUpdateMs,
+      ),
+    );
     _reconnectAttempt++;
     final int delaySeconds = _reconnectAttempt <= 2 ? 2 : 5;
     _reconnectTimer?.cancel();

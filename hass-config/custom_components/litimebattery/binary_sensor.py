@@ -45,6 +45,12 @@ BINARY_SENSORS: tuple[LiTimeBinarySensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda data: _data(data, "extended_layout"),
     ),
+    LiTimeBinarySensorDescription(
+        key="balancing",
+        name="Balancing",
+        icon="mdi:scale-balance",
+        value_fn=lambda data: _data(data, "balancing_active"),
+    ),
 )
 
 _DEVICE_INFO = DeviceInfo(

@@ -91,6 +91,64 @@ SENSORS: tuple[LiTimeSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _data(data, "soh_percent"),
     ),
+    *(
+        LiTimeSensorDescription(
+            key=key,
+            name=name,
+            native_unit_of_measurement="Ah",
+            state_class=SensorStateClass.MEASUREMENT,
+            suggested_display_precision=2,
+            value_fn=lambda data, field=field: _data(data, field),
+        )
+        for key, name, field in (
+            ("remaining_capacity", "Remaining Capacity", "remaining_capacity_ah"),
+            ("full_charge_capacity", "Full Charge Capacity", "full_charge_capacity_ah"),
+            ("rated_capacity", "Rated Capacity", "rated_capacity_ah"),
+        )
+    ),
+    *(
+        LiTimeSensorDescription(
+            key=key,
+            name=name,
+            native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+            device_class=SensorDeviceClass.VOLTAGE,
+            state_class=SensorStateClass.MEASUREMENT,
+            suggested_display_precision=3,
+            value_fn=lambda data, field=field: _data(data, field),
+        )
+        for key, name, field in (
+            ("minimum_cell_voltage", "Minimum Cell Voltage", "minimum_cell_voltage_v"),
+            ("maximum_cell_voltage", "Maximum Cell Voltage", "maximum_cell_voltage_v"),
+            ("cell_voltage_delta", "Cell Voltage Delta", "cell_voltage_delta_v"),
+        )
+    ),
+    LiTimeSensorDescription(
+        key="balancing_cells",
+        name="Balancing Cells",
+        icon="mdi:scale-balance",
+        value_fn=lambda data: ", ".join(
+            str(cell) for cell in (_data(data, "balancing_cells") or [])
+        )
+        or "None",
+    ),
+    *(
+        LiTimeSensorDescription(
+            key=key,
+            name=name,
+            icon=icon,
+            entity_category=EntityCategory.DIAGNOSTIC,
+            value_fn=lambda data, field=field: _data(data, field),
+        )
+        for key, name, field, icon in (
+            ("cell_count", "Cell Count", "cell_count", "mdi:battery-multiple"),
+            (
+                "temperature_sensor_count",
+                "Temperature Sensor Count",
+                "temperature_sensor_count",
+                "mdi:thermometer-lines",
+            ),
+        )
+    ),
     LiTimeSensorDescription(
         key="remaining_capacity_raw",
         name="Remaining Capacity Raw",
@@ -136,6 +194,7 @@ SENSORS: tuple[LiTimeSensorDescription, ...] = (
             ("fault_status_raw", "Fault Status Raw", "fault_status"),
             ("balance_status_raw", "Balance Status Raw", "balance_status"),
             ("battery_status_raw", "Battery Status Raw", "battery_status"),
+            ("other_information_raw", "Other Information Raw", "other_information"),
         )
     ),
     LiTimeSensorDescription(

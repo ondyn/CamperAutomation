@@ -57,8 +57,9 @@ class DeviceScanPage extends StatefulWidget {
 }
 
 class _DeviceScanPageState extends State<DeviceScanPage> {
-  static final Guid _liTimeServiceUuid =
-      Guid('F000FFC0-0451-4000-B000-000000000000');
+  static final Guid _liTimeServiceUuid = Guid(
+    'F000FFC0-0451-4000-B000-000000000000',
+  );
 
   final Map<String, ScanResult> _results = <String, ScanResult>{};
   StreamSubscription<List<ScanResult>>? _scanSubscription;
@@ -211,8 +212,8 @@ class _DeviceScanPageState extends State<DeviceScanPage> {
   Widget build(BuildContext context) {
     final List<ScanResult> devices = _results.values.toList()
       ..sort((ScanResult left, ScanResult right) {
-        final int preferred = (_preferred(right) ? 1 : 0) -
-            (_preferred(left) ? 1 : 0);
+        final int preferred =
+            (_preferred(right) ? 1 : 0) - (_preferred(left) ? 1 : 0);
         return preferred != 0 ? preferred : right.rssi.compareTo(left.rssi);
       });
 
@@ -248,11 +249,14 @@ class _DeviceScanPageState extends State<DeviceScanPage> {
                 final String name = _name(result);
                 return ListTile(
                   leading: Icon(
-                    _preferred(result) ? Icons.battery_charging_full : Icons.bluetooth,
+                    _preferred(result)
+                        ? Icons.battery_charging_full
+                        : Icons.bluetooth,
                   ),
                   title: Text(name),
                   subtitle: Text(_details(result)),
-                  isThreeLine: result.advertisementData.serviceUuids.isNotEmpty ||
+                  isThreeLine:
+                      result.advertisementData.serviceUuids.isNotEmpty ||
                       result.advertisementData.manufacturerData.isNotEmpty,
                   trailing: Text('${result.rssi} dBm'),
                   onTap: () => _selectDevice(result, name),
@@ -279,9 +283,9 @@ class BatteryDashboardPage extends StatefulWidget {
 
 class _BatteryDashboardPageState extends State<BatteryDashboardPage> {
   StreamSubscription<Map<String, dynamic>?>? _stateSubscription;
-  Map<String, dynamic> _state = <String, dynamic>{
-    'connection': 'connecting',
-  };
+  StreamSubscription<Map<String, dynamic>?>? _shutdownSubscription;
+  Map<String, dynamic> _state = <String, dynamic>{'connection': 'connecting'};
+  bool _shuttingDown = false;
 
   @override
   void initState() {
@@ -291,29 +295,94 @@ class _BatteryDashboardPageState extends State<BatteryDashboardPage> {
       'remote_id': widget.remoteId,
       'name': widget.deviceName,
     });
-    _stateSubscription = service.on('state_update').listen(
-      (Map<String, dynamic>? state) {
-        if (mounted && state != null) {
-          setState(() => _state = state);
-        }
-      },
-    );
+    _stateSubscription = service.on('state_update').listen((
+      Map<String, dynamic>? state,
+    ) {
+      if (mounted && state != null) {
+        setState(() => _state = state);
+      }
+    });
+    _shutdownSubscription = service.on('shutdown_result').listen((
+      Map<String, dynamic>? result,
+    ) {
+      if (!mounted || result == null) {
+        return;
+      }
+      setState(() => _shuttingDown = false);
+      final bool success = result['success'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? 'Battery powered off. Connect a charger to power it on.'
+                : (result['error'] as String? ?? 'Battery power off failed.'),
+          ),
+        ),
+      );
+    });
   }
 
   @override
   void dispose() {
     _stateSubscription?.cancel();
+    _shutdownSubscription?.cancel();
     super.dispose();
+  }
+
+  Future<void> _confirmShutdown() async {
+    final bool confirmed =
+        await showDialog<bool>(
+          context: context,
+          builder: (BuildContext context) => AlertDialog(
+            title: const Text('Power off battery?'),
+            content: const Text(
+              'Disconnect all chargers first. Powering off immediately stops '
+              'the battery and Bluetooth. A charger is required to power it '
+              'back on.',
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Power off'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!confirmed || !mounted) {
+      return;
+    }
+    setState(() => _shuttingDown = true);
+    FlutterBackgroundService().invoke('shutdown_battery');
   }
 
   @override
   Widget build(BuildContext context) {
-    final Map<String, dynamic>? data =
-        _state['data'] as Map<String, dynamic>?;
+    final Map<String, dynamic>? data = _state['data'] as Map<String, dynamic>?;
     final String connection = _state['connection'] as String? ?? 'disconnected';
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.deviceName)),
+      appBar: AppBar(
+        title: Text(widget.deviceName),
+        actions: <Widget>[
+          IconButton(
+            tooltip: 'Power off battery',
+            onPressed: connection == 'connected' && !_shuttingDown
+                ? _confirmShutdown
+                : null,
+            icon: _shuttingDown
+                ? const SizedBox.square(
+                    dimension: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.power_settings_new),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: <Widget>[
@@ -337,7 +406,10 @@ class _BatteryDashboardPageState extends State<BatteryDashboardPage> {
           else ...<Widget>[
             _MetricStrip(data: data),
             const SizedBox(height: 20),
-            Text('Cell voltages', style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'Cell voltages',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 8),
             _ValueGrid(
               values: (data['cell_voltages_v'] as List<dynamic>? ?? <dynamic>[])
@@ -346,13 +418,66 @@ class _BatteryDashboardPageState extends State<BatteryDashboardPage> {
               decimals: 3,
             ),
             const SizedBox(height: 20),
-            Text('Temperatures', style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'Temperatures',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: 8),
             _ValueGrid(
               values: (data['temperatures_c'] as List<dynamic>? ?? <dynamic>[])
                   .cast<num>(),
-              suffix: 'C',
-              decimals: 1,
+              suffix: '°C',
+              decimals: 0,
+            ),
+            const SizedBox(height: 20),
+            _DetailsSection(
+              title: 'Cell health',
+              values: <(String, String)>[
+                ('Active cells', '${data['cell_count']}'),
+                ('Minimum', _number(data, 'minimum_cell_voltage_v', 'V', 3)),
+                ('Maximum', _number(data, 'maximum_cell_voltage_v', 'V', 3)),
+                ('Delta', _number(data, 'cell_voltage_delta_v', 'V', 3)),
+              ],
+            ),
+            const SizedBox(height: 20),
+            _DetailsSection(
+              title: 'Balance',
+              values: <(String, String)>[
+                (
+                  'Status',
+                  data['balancing_active'] == true ? 'Active' : 'Idle',
+                ),
+                ('Cells', _integerList(data['balancing_cells'])),
+                ('Raw mask', _hex(data['balance_status'])),
+              ],
+            ),
+            const SizedBox(height: 20),
+            _DetailsSection(
+              title: 'Capacity',
+              values: <(String, String)>[
+                ('Remaining', _number(data, 'remaining_capacity_ah', 'Ah', 2)),
+                (
+                  'Full charge',
+                  _number(data, 'full_charge_capacity_ah', 'Ah', 2),
+                ),
+                ('Rated', _number(data, 'rated_capacity_ah', 'Ah', 2)),
+                ('Discharge cycles', '${data['discharge_cycles']}'),
+                (
+                  'Total discharge raw',
+                  '${data['total_discharge_capacity_raw']}',
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            _DetailsSection(
+              title: 'Diagnostics',
+              values: <(String, String)>[
+                ('Battery status', _hex(data['battery_status'])),
+                ('Alarm status', _hex(data['alarm_status'])),
+                ('Protection status', _hex(data['protection_status'])),
+                ('Fault status', _hex(data['fault_status'])),
+                ('Other information', _hex(data['other_information'])),
+              ],
             ),
           ],
         ],
@@ -370,6 +495,7 @@ class _MetricStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final List<(String, String)> metrics = <(String, String)>[
       ('Battery', '${(data['battery_voltage_v'] as num).toStringAsFixed(2)} V'),
+      ('Output', '${(data['output_voltage_v'] as num).toStringAsFixed(2)} V'),
       ('Current', '${(data['current_a'] as num).toStringAsFixed(2)} A'),
       ('Power', '${(data['power_w'] as num).toStringAsFixed(1)} W'),
       ('Charge', '${data['soc_percent']}%'),
@@ -380,19 +506,78 @@ class _MetricStrip extends StatelessWidget {
       spacing: 20,
       runSpacing: 16,
       children: metrics
-          .map(((String, String) metric) => SizedBox(
-                width: 96,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(metric.$1, style: Theme.of(context).textTheme.labelMedium),
-                    Text(metric.$2, style: Theme.of(context).textTheme.titleLarge),
-                  ],
-                ),
-              ))
+          .map(
+            ((String, String) metric) => SizedBox(
+              width: 96,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    metric.$1,
+                    style: Theme.of(context).textTheme.labelMedium,
+                  ),
+                  Text(
+                    metric.$2,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                ],
+              ),
+            ),
+          )
           .toList(),
     );
   }
+}
+
+class _DetailsSection extends StatelessWidget {
+  const _DetailsSection({required this.title, required this.values});
+
+  final String title;
+  final List<(String, String)> values;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(title, style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 6),
+        for (final (String, String) value in values)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(
+              children: <Widget>[
+                Expanded(child: Text(value.$1)),
+                Text(value.$2, style: Theme.of(context).textTheme.bodyLarge),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+String _number(
+  Map<String, dynamic> data,
+  String key,
+  String suffix,
+  int decimals,
+) {
+  final Object? value = data[key];
+  return value is num ? '${value.toStringAsFixed(decimals)} $suffix' : 'N/A';
+}
+
+String _integerList(Object? value) {
+  if (value is! List<dynamic> || value.isEmpty) {
+    return 'None';
+  }
+  return value.join(', ');
+}
+
+String _hex(Object? value) {
+  return value is int
+      ? '0x${value.toRadixString(16).toUpperCase().padLeft(2, '0')}'
+      : 'N/A';
 }
 
 class _ValueGrid extends StatelessWidget {
@@ -420,11 +605,15 @@ class _ValueGrid extends StatelessWidget {
       itemCount: values.length,
       itemBuilder: (BuildContext context, int index) => DecoratedBox(
         decoration: BoxDecoration(
-          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+          border: Border.all(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
           borderRadius: BorderRadius.circular(6),
         ),
         child: Center(
-          child: Text('${index + 1}: ${values[index].toStringAsFixed(decimals)} $suffix'),
+          child: Text(
+            '${index + 1}: ${values[index].toStringAsFixed(decimals)} $suffix',
+          ),
         ),
       ),
     );

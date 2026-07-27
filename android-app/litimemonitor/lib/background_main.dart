@@ -29,6 +29,18 @@ void backgroundMain(ServiceInstance service) async {
     }
   });
 
+  service.on('shutdown_battery').listen((_) async {
+    try {
+      await battery.shutdown();
+      service.invoke('shutdown_result', <String, dynamic>{'success': true});
+    } catch (error) {
+      service.invoke('shutdown_result', <String, dynamic>{
+        'success': false,
+        'error': error.toString().replaceFirst('Bad state: ', ''),
+      });
+    }
+  });
+
   service.on('stop_service').listen((_) async {
     stateTimer.cancel();
     await battery.stop();
