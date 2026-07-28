@@ -30,6 +30,29 @@ void main() {
     ]);
   });
 
+  test('builds the official discharge MOS requests', () {
+    expect(LiTimeProtocol.setDischargeEnabled(true), <int>[
+      0x00,
+      0x00,
+      0x04,
+      0x01,
+      0x0C,
+      0x55,
+      0xAA,
+      0x10,
+    ]);
+    expect(LiTimeProtocol.setDischargeEnabled(false), <int>[
+      0x00,
+      0x00,
+      0x04,
+      0x01,
+      0x0D,
+      0x55,
+      0xAA,
+      0x11,
+    ]);
+  });
+
   test('reassembles and validates fragmented ordinary responses', () {
     final List<int> payload = _telemetryPayload();
     final List<int> response = _response(payload);
@@ -53,9 +76,8 @@ void main() {
   });
 
   test('decodes command 0x13 V1 telemetry offsets', () {
-    final LiTimeTelemetry telemetry = LiTimeTelemetry.fromPayload(
-      _telemetryPayload(),
-    );
+    final List<int> payload = _telemetryPayload();
+    final LiTimeTelemetry telemetry = LiTimeTelemetry.fromPayload(payload);
 
     expect(telemetry.batteryVoltageV, 13.24);
     expect(telemetry.currentA, -4.5);
@@ -65,6 +87,9 @@ void main() {
     expect(telemetry.remainingCapacityAh, 7.3);
     expect(telemetry.balancingActive, isTrue);
     expect(telemetry.balancingCells, <int>[2, 3, 4]);
+    expect(telemetry.dischargeEnabled, isTrue);
+    payload[80] = 0x80;
+    expect(LiTimeTelemetry.fromPayload(payload).dischargeEnabled, isFalse);
     expect(telemetry.cellVoltageDeltaV, closeTo(0.015, 0.000001));
     expect(telemetry.socPercent, 73);
     expect(telemetry.dischargeCycles, 42);

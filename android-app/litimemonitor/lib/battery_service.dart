@@ -62,6 +62,25 @@ class LiTimeBatteryService {
   Stream<BatteryState> get stateStream => _stateController.stream;
   BatteryState get state => _state;
 
+  Future<void> setDischargeEnabled(bool enabled) async {
+    final BluetoothCharacteristic? characteristic = _writeCharacteristic;
+    if (_state.connection != BatteryConnectionState.connected ||
+        characteristic == null) {
+      throw StateError('Battery is not connected');
+    }
+
+    debugPrint(
+      '[LiTimeBatteryService] Setting discharge enabled=$enabled on '
+      '${characteristic.uuid}',
+    );
+    await characteristic.write(
+      LiTimeProtocol.setDischargeEnabled(enabled),
+      withoutResponse: false,
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await _requestTelemetry();
+  }
+
   Future<void> shutdown() async {
     final BluetoothCharacteristic? characteristic = _writeCharacteristic;
     if (_state.connection != BatteryConnectionState.connected ||

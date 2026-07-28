@@ -1,12 +1,20 @@
 import 'dart:typed_data';
 
 class LiTimeProtocol {
+  static const int enableDischargeCommand = 0x0C;
+  static const int disableDischargeCommand = 0x0D;
   static const int telemetryCommand = 0x13;
   static const int telemetryResponseCommand = 0x93;
   static const int shutdownCommand = 0x60;
 
   static List<int> requestTelemetry({int address = 0}) =>
       buildCommand(telemetryCommand, address: address);
+
+  static List<int> setDischargeEnabled(bool enabled, {int address = 0}) =>
+      buildCommand(
+        enabled ? enableDischargeCommand : disableDischargeCommand,
+        address: address,
+      );
 
   static List<int> shutdown({int address = 0}) =>
       buildCommand(shutdownCommand, address: address);
@@ -173,6 +181,7 @@ class LiTimeTelemetry {
       ? null
       : maximumCellVoltageV! - minimumCellVoltageV!;
   bool get balancingActive => balanceStatus != 0;
+  bool get dischargeEnabled => batteryStatus & 0x80 == 0;
   List<int> get balancingCells =>
       List<int>.generate(activeCellVoltagesMv.length, (int index) => index)
           .where((int index) => balanceStatus & (1 << index) != 0)
@@ -261,6 +270,7 @@ class LiTimeTelemetry {
     'cell_voltage_delta_v': cellVoltageDeltaV,
     'balancing_active': balancingActive,
     'balancing_cells': balancingCells,
+    'discharge_enabled': dischargeEnabled,
     'remaining_capacity_ah': remainingCapacityAh,
     'full_charge_capacity_ah': fullChargeCapacityAh,
     'rated_capacity_ah': ratedCapacityAh,

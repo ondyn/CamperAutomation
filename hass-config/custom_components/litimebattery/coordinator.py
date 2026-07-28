@@ -9,7 +9,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import BATTERY_API_URL, DOMAIN
+from .const import (
+    BATTERY_API_URL,
+    BATTERY_DISCHARGE_URL,
+    BATTERY_POWER_OFF_URL,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,3 +42,20 @@ class LiTimeBatteryDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return payload
         except Exception as err:
             raise UpdateFailed(f"LiTime Battery API error: {err}") from err
+
+    async def async_set_discharge_enabled(self, enabled: bool) -> None:
+        """Set the battery discharge MOS state."""
+        await self._async_post(BATTERY_DISCHARGE_URL, {"enabled": enabled})
+        await self.async_request_refresh()
+
+    async def async_power_off(self) -> None:
+        """Power off the battery."""
+        await self._async_post(BATTERY_POWER_OFF_URL, {"confirm": True})
+
+    async def _async_post(self, url: str, payload: dict[str, Any]) -> None:
+        try:
+            async with asyncio.timeout(5):
+                response = await self._session.post(url, json=payload)
+                response.raise_for_status()
+        except Exception as err:
+            raise UpdateFailed(f"LiTime Battery control error: {err}") from err
