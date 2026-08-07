@@ -11,10 +11,13 @@ LiTimeMonitor is an Android BLE bridge for LiTime smart batteries. It polls LiTi
 - Foreground service continues while the UI is closed
 - V1 (16-cell) and V2 (32-cell) command `0x13` decoding
 - Active cell and temperature sensors, cell spread, capacities, balancing cells, and raw BMS status fields
+- Native-compatible time-to-full and time-to-empty estimates, also exposed to Home Assistant
 - Confirmed battery shutdown using command `0x60`, guarded by a charger check and confirmation dialog
 - Local API at `127.0.0.1:8766`
 
 The protocol was recovered by static analysis and validated against an `L-12100BNNH19` battery using the `FFE0`/`FFE1` transport. On this model, voltage is reported in millivolts, current in milliamps, temperature in whole degrees Celsius, and capacity in hundredths of an amp-hour. Raw capacity and status fields remain in the API alongside interpreted values for diagnostics and future model support.
+
+LiTime 3.0.0 was pulled from the connected phone and compared with the retained 2.9.0 Flutter AOT analysis. Command `0x13` offsets, BLE transport, operating-state values, and charge/discharge estimate formulas are unchanged. Versioned artifacts and the comparison report are in `analysis-3.0.0/`.
 
 ## API
 

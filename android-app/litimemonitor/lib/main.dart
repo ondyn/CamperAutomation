@@ -406,6 +406,8 @@ class _BatteryDashboardPageState extends State<BatteryDashboardPage> {
           else ...<Widget>[
             _MetricStrip(data: data),
             const SizedBox(height: 20),
+            _EstimateStatus(data: data),
+            const SizedBox(height: 20),
             Text(
               'Cell voltages',
               style: Theme.of(context).textTheme.titleMedium,
@@ -461,6 +463,16 @@ class _BatteryDashboardPageState extends State<BatteryDashboardPage> {
                   _number(data, 'full_charge_capacity_ah', 'Ah', 2),
                 ),
                 ('Rated', _number(data, 'rated_capacity_ah', 'Ah', 2)),
+                if (data['estimated_hours_to_full'] != null)
+                  (
+                    'Time to full',
+                    _number(data, 'estimated_hours_to_full', 'h', 2),
+                  ),
+                if (data['estimated_hours_to_empty'] != null)
+                  (
+                    'Time to empty',
+                    _number(data, 'estimated_hours_to_empty', 'h', 2),
+                  ),
                 ('Discharge cycles', '${data['discharge_cycles']}'),
                 (
                   'Total discharge raw',
@@ -485,6 +497,47 @@ class _BatteryDashboardPageState extends State<BatteryDashboardPage> {
     );
   }
 }
+
+class _EstimateStatus extends StatelessWidget {
+  const _EstimateStatus({required this.data});
+
+  final Map<String, dynamic> data;
+
+  @override
+  Widget build(BuildContext context) {
+    final String state = data['operating_state'] as String? ?? 'unknown';
+    final num? hours = switch (state) {
+      'charging' => data['estimated_hours_to_full'] as num?,
+      'discharging' => data['estimated_hours_to_empty'] as num?,
+      _ => null,
+    };
+    final String? estimate = switch (state) {
+      'charging' when hours != null =>
+        'Estimated ${hours.toStringAsFixed(2)} h to full',
+      'discharging' when hours != null =>
+        'Estimated ${hours.toStringAsFixed(2)} h to empty',
+      _ => null,
+    };
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Text(
+          _titleCase(state),
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        if (estimate != null) ...<Widget>[
+          const SizedBox(height: 4),
+          Text(estimate, style: Theme.of(context).textTheme.bodyLarge),
+        ],
+      ],
+    );
+  }
+}
+
+String _titleCase(String value) => value.isEmpty
+    ? value
+    : '${value.substring(0, 1).toUpperCase()}${value.substring(1)}';
 
 class _MetricStrip extends StatelessWidget {
   const _MetricStrip({required this.data});

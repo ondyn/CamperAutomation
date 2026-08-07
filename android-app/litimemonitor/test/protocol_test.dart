@@ -94,6 +94,54 @@ void main() {
     expect(telemetry.socPercent, 73);
     expect(telemetry.dischargeCycles, 42);
   });
+
+  test('matches native app discharge estimate rounding', () {
+    final Uint8List payload = Uint8List.fromList(_telemetryPayload());
+    final ByteData data = ByteData.sublistView(payload);
+    data.setInt32(40, -1049, Endian.little);
+    data.setUint16(80, 2, Endian.little);
+    final LiTimeTelemetry telemetry = LiTimeTelemetry.fromPayload(payload);
+
+    expect(telemetry.estimatedHoursToEmpty, 7.3);
+    expect(telemetry.estimatedHoursToFull, isNull);
+    expect(telemetry.operatingState, 'discharging');
+    expect(telemetry.toJson()['estimated_hours_to_empty'], 7.3);
+    expect(telemetry.toJson()['operating_state'], 'discharging');
+  });
+
+  test('matches native app charge estimate rounding', () {
+    final Uint8List payload = Uint8List.fromList(_telemetryPayload());
+    final ByteData data = ByteData.sublistView(payload);
+    data.setInt32(40, 1050, Endian.little);
+    data.setUint16(80, 1, Endian.little);
+    final LiTimeTelemetry telemetry = LiTimeTelemetry.fromPayload(payload);
+
+    expect(telemetry.estimatedHoursToFull, 2.45);
+    expect(telemetry.estimatedHoursToEmpty, isNull);
+    expect(telemetry.operatingState, 'charging');
+  });
+
+  test('omits estimates while idle or below rounded current resolution', () {
+    final Uint8List payload = Uint8List.fromList(_telemetryPayload());
+    final ByteData data = ByteData.sublistView(payload);
+    data.setInt32(40, 49, Endian.little);
+    data.setUint16(80, 1, Endian.little);
+    final LiTimeTelemetry telemetry = LiTimeTelemetry.fromPayload(payload);
+
+    expect(telemetry.estimatedHoursToFull, isNull);
+    expect(telemetry.estimatedHoursToEmpty, isNull);
+  });
+
+  test('decodes native app standby, full, and unknown states', () {
+    final Uint8List payload = Uint8List.fromList(_telemetryPayload());
+    final ByteData data = ByteData.sublistView(payload);
+
+    expect(LiTimeTelemetry.fromPayload(payload).operatingState, 'standby');
+    data.setUint16(80, 4, Endian.little);
+    expect(LiTimeTelemetry.fromPayload(payload).operatingState, 'full');
+    data.setUint16(80, 8, Endian.little);
+    expect(LiTimeTelemetry.fromPayload(payload).operatingState, 'unknown');
+  });
 }
 
 List<int> _telemetryPayload() {

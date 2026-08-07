@@ -31,5 +31,6 @@ __pycache__
 # Private third-party application research
 /android-app/chargerconnect/
 /android-app/litimemonitor/analysis/
+/android-app/litimemonitor/analysis-*
 /obd-diagnostic/
 /.github/workflows/phase3-windows-runtime.yml

@@ -19,6 +19,7 @@ from homeassistant.const import (
     UnitOfElectricPotential,
     UnitOfPower,
     UnitOfTemperature,
+    UnitOfTime,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -90,6 +91,31 @@ SENSORS: tuple[LiTimeSensorDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         value_fn=lambda data: _data(data, "soh_percent"),
+    ),
+    LiTimeSensorDescription(
+        key="operating_state",
+        name="Operating State",
+        icon="mdi:battery-sync",
+        value_fn=lambda data: _data(data, "operating_state")
+        if data.get("connection") == "connected"
+        else "offline",
+    ),
+    *(
+        LiTimeSensorDescription(
+            key=key,
+            name=name,
+            native_unit_of_measurement=UnitOfTime.HOURS,
+            device_class=SensorDeviceClass.DURATION,
+            state_class=SensorStateClass.MEASUREMENT,
+            suggested_display_precision=2,
+            value_fn=lambda data, field=field: _data(data, field)
+            if data.get("connection") == "connected"
+            else None,
+        )
+        for key, name, field in (
+            ("time_to_full", "Time to Full", "estimated_hours_to_full"),
+            ("time_to_empty", "Time to Empty", "estimated_hours_to_empty"),
+        )
     ),
     *(
         LiTimeSensorDescription(

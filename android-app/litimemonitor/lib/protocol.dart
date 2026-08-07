@@ -167,6 +167,12 @@ class LiTimeTelemetry {
   double get fullChargeCapacityAh => fullChargeCapacityRaw / 100.0;
   double? get ratedCapacityAh =>
       ratedCapacityRaw == 0 ? null : ratedCapacityRaw / 100.0;
+      double? get estimatedHoursToFull => batteryStatus == 1
+      ? _estimatedHours(fullChargeCapacityAh - remainingCapacityAh)
+      : null;
+      double? get estimatedHoursToEmpty => batteryStatus == 2
+      ? _estimatedHours(remainingCapacityAh)
+      : null;
   double? get minimumCellVoltageV => cellVoltagesV.isEmpty
       ? null
       : cellVoltagesV.reduce(
@@ -182,11 +188,30 @@ class LiTimeTelemetry {
       : maximumCellVoltageV! - minimumCellVoltageV!;
   bool get balancingActive => balanceStatus != 0;
   bool get dischargeEnabled => batteryStatus & 0x80 == 0;
+  String get operatingState => switch (batteryStatus) {
+    0 => 'standby',
+    1 => 'charging',
+    2 => 'discharging',
+    4 => 'full',
+    _ => 'unknown',
+  };
   List<int> get balancingCells =>
       List<int>.generate(activeCellVoltagesMv.length, (int index) => index)
           .where((int index) => balanceStatus & (1 << index) != 0)
           .map((int index) => index + 1)
           .toList(growable: false);
+
+  double? _estimatedHours(double capacityAh) {
+    if (currentMa == 0 || capacityAh <= 0) {
+      return null;
+    }
+    final double roundedCurrentA =
+        double.parse((currentMa.abs() / 1000.0).toStringAsFixed(1));
+    if (roundedCurrentA == 0) {
+      return null;
+    }
+    return double.parse((capacityAh / roundedCurrentA).toStringAsFixed(2));
+  }
 
   static List<int> _withoutTrailingZeros(List<int> values) {
     int length = values.length;
@@ -271,9 +296,12 @@ class LiTimeTelemetry {
     'balancing_active': balancingActive,
     'balancing_cells': balancingCells,
     'discharge_enabled': dischargeEnabled,
+    'operating_state': operatingState,
     'remaining_capacity_ah': remainingCapacityAh,
     'full_charge_capacity_ah': fullChargeCapacityAh,
     'rated_capacity_ah': ratedCapacityAh,
+    'estimated_hours_to_full': estimatedHoursToFull,
+    'estimated_hours_to_empty': estimatedHoursToEmpty,
     'remaining_capacity_raw': remainingCapacityRaw,
     'full_charge_capacity_raw': fullChargeCapacityRaw,
     'rated_capacity_raw': ratedCapacityRaw,
