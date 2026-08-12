@@ -6,6 +6,17 @@ from homeassistant.core import HomeAssistant
 from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN, PLATFORMS
 from .coordinator import ChargerDataCoordinator
 
+_OLD_DEFAULT_SCAN_INTERVAL = 60
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    if entry.version == 1:
+        options = dict(entry.options)
+        if options.get(CONF_SCAN_INTERVAL) == _OLD_DEFAULT_SCAN_INTERVAL:
+            options[CONF_SCAN_INTERVAL] = DEFAULT_SCAN_INTERVAL
+        hass.config_entries.async_update_entry(entry, options=options, version=2)
+    return True
+
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     interval = int(entry.options.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL))

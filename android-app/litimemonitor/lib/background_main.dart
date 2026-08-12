@@ -6,6 +6,13 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'battery_service.dart';
 import 'rest_server.dart';
 
+const String _defaultRemoteId = String.fromEnvironment(
+  'LITIME_DEFAULT_REMOTE_ID',
+);
+const String _defaultDeviceName = String.fromEnvironment(
+  'LITIME_DEFAULT_DEVICE_NAME',
+);
+
 @pragma('vm:entry-point')
 void backgroundMain(ServiceInstance service) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,6 +35,13 @@ void backgroundMain(ServiceInstance service) async {
       battery.setTargetDevice(remoteId, name: name);
     }
   });
+
+  if (_defaultRemoteId.isNotEmpty) {
+    battery.setTargetDevice(
+      _defaultRemoteId,
+      name: _defaultDeviceName.isEmpty ? null : _defaultDeviceName,
+    );
+  }
 
   service.on('shutdown_battery').listen((_) async {
     try {

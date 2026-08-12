@@ -111,8 +111,6 @@ class LiTimeBatteryService {
         BatteryState(
           connection: BatteryConnectionState.disconnected,
           deviceName: _state.deviceName,
-          telemetry: _state.telemetry,
-          lastUpdateMs: _state.lastUpdateMs,
         ),
       );
     } catch (error) {
@@ -173,8 +171,6 @@ class LiTimeBatteryService {
         BatteryState(
           connection: BatteryConnectionState.connecting,
           deviceName: _state.deviceName,
-          telemetry: _state.telemetry,
-          lastUpdateMs: _state.lastUpdateMs,
         ),
       );
 
@@ -365,8 +361,6 @@ class LiTimeBatteryService {
       BatteryState(
         connection: BatteryConnectionState.disconnected,
         deviceName: _state.deviceName,
-        telemetry: _state.telemetry,
-        lastUpdateMs: _state.lastUpdateMs,
       ),
     );
     _reconnectAttempt++;

@@ -20,6 +20,8 @@ _DEVICE_INFO = DeviceInfo(
 
 
 def _discharge_enabled(payload: dict[str, Any]) -> bool | None:
+    if payload.get("connection") != "connected":
+        return None
     data = payload.get("data")
     value = data.get("discharge_enabled") if isinstance(data, dict) else None
     return value if isinstance(value, bool) else None

@@ -21,6 +21,8 @@ from .coordinator import LiTimeBatteryDataCoordinator
 
 
 def _data(payload: dict[str, Any], key: str) -> Any:
+    if payload.get("connection") != "connected":
+        return None
     data = payload.get("data")
     return data.get(key) if isinstance(data, dict) else None
 

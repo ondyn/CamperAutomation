@@ -31,8 +31,17 @@ from .coordinator import LiTimeBatteryDataCoordinator
 
 
 def _data(payload: dict[str, Any], key: str) -> Any:
+    if payload.get("connection") != "connected":
+        return None
     data = payload.get("data")
     return data.get(key) if isinstance(data, dict) else None
+
+
+def _balancing_cells(payload: dict[str, Any]) -> str | None:
+    cells = _data(payload, "balancing_cells")
+    if not isinstance(cells, list):
+        return None
+    return ", ".join(str(cell) for cell in cells) or "None"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -152,10 +161,7 @@ SENSORS: tuple[LiTimeSensorDescription, ...] = (
         key="balancing_cells",
         name="Balancing Cells",
         icon="mdi:scale-balance",
-        value_fn=lambda data: ", ".join(
-            str(cell) for cell in (_data(data, "balancing_cells") or [])
-        )
-        or "None",
+        value_fn=_balancing_cells,
     ),
     *(
         LiTimeSensorDescription(
@@ -245,7 +251,8 @@ SENSORS: tuple[LiTimeSensorDescription, ...] = (
         value_fn=lambda data: datetime.fromtimestamp(
             data["last_update_ms"] / 1000, tz=UTC
         )
-        if data.get("last_update_ms") is not None
+        if data.get("connection") == "connected"
+        and data.get("last_update_ms") is not None
         else None,
     ),
 )
@@ -272,7 +279,12 @@ async def async_setup_entry(
 
     @callback
     def add_array_entities() -> None:
-        data = coordinator.data.get("data") if coordinator.data else None
+        data = (
+            coordinator.data.get("data")
+            if coordinator.data
+            and coordinator.data.get("connection") == "connected"
+            else None
+        )
         if not isinstance(data, dict):
             return
 
