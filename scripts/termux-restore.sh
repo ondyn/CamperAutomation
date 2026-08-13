@@ -18,6 +18,7 @@ PREFIX_ARCHIVE="${BACKUP_DIR}/termux-prefix.tar.gz"
 CONFIG_ARCHIVE="${BACKUP_DIR}/termux-config.tar.gz"
 HA_ARCHIVE="${BACKUP_DIR}/homeassistant-config.tar.gz"
 TAILSCALE_ARCHIVE="${BACKUP_DIR}/tailscale-config.tar.gz"
+METADATA_FILE="${BACKUP_DIR}/metadata.env"
 
 restore_legacy_full_backup() {
   echo "Detected legacy full backup format."
@@ -56,6 +57,9 @@ restore_config_backup() {
   local tmp_restore_dir
   local extracted_ha_dir
   local target_ha_dir
+  local backup_ha_config_rel
+  local expected_dashboard_count
+  local restored_dashboard_count
 
   if [ ! -f "${HA_ARCHIVE}" ]; then
     echo "Missing backup artifact: ${HA_ARCHIVE}" >&2
@@ -84,10 +88,54 @@ restore_config_backup() {
     exit 1
   fi
 
-  if [ -d "${HOME}/.suroot" ] || [ -d "${HOME}/.suroot/.homeassistant" ]; then
-    target_ha_dir="${HOME}/.suroot/.homeassistant"
-  else
-    target_ha_dir="${HOME}/.homeassistant"
+  backup_ha_config_rel=""
+  expected_dashboard_count=""
+  if [ -f "${METADATA_FILE}" ]; then
+    backup_ha_config_rel="$(sed -n 's/^HA_CONFIG_REL=//p' "${METADATA_FILE}" | tail -n1)"
+    expected_dashboard_count="$(sed -n 's/^HA_STORAGE_DASHBOARD_COUNT=//p' "${METADATA_FILE}" | tail -n1)"
+  fi
+
+  case "${expected_dashboard_count}" in
+    ""|*[!0-9]*)
+      if [ -n "${expected_dashboard_count}" ]; then
+        rm -rf "${tmp_restore_dir}"
+        echo "ERROR: Invalid HA_STORAGE_DASHBOARD_COUNT in ${METADATA_FILE}." >&2
+        exit 1
+      fi
+      ;;
+  esac
+
+  case "${backup_ha_config_rel}" in
+    .homeassistant|.suroot/.homeassistant)
+      target_ha_dir="${HOME}/${backup_ha_config_rel}"
+      ;;
+    *)
+      if [ -d "${HOME}/.homeassistant" ]; then
+        target_ha_dir="${HOME}/.homeassistant"
+      elif [ -d "${HOME}/.suroot/.homeassistant" ]; then
+        target_ha_dir="${HOME}/.suroot/.homeassistant"
+      else
+        target_ha_dir="${HOME}/.homeassistant"
+      fi
+      ;;
+  esac
+
+  restored_dashboard_count=0
+  for dashboard_file in "${extracted_ha_dir}/.storage"/lovelace.dashboard_*; do
+    [ -f "${dashboard_file}" ] || continue
+    restored_dashboard_count=$((restored_dashboard_count + 1))
+  done
+  if [ -n "${expected_dashboard_count}" ] && [ "${restored_dashboard_count}" -ne "${expected_dashboard_count}" ]; then
+    rm -rf "${tmp_restore_dir}"
+    echo "ERROR: Dashboard count mismatch in ${HA_ARCHIVE}: expected ${expected_dashboard_count}, found ${restored_dashboard_count}." >&2
+    exit 1
+  fi
+
+  if pgrep -f -- "[[:space:]]-c[[:space:]]+${target_ha_dir}([[:space:]]|$)" >/dev/null 2>&1; then
+    rm -rf "${tmp_restore_dir}"
+    echo "ERROR: Home Assistant is running with ${target_ha_dir}." >&2
+    echo "Stop it with ~/scripts/hassctl.sh stop, then run restore again." >&2
+    exit 1
   fi
 
   mkdir -p "$(dirname "${target_ha_dir}")"
@@ -97,6 +145,7 @@ restore_config_backup() {
 
   echo "Restore completed from configuration backup: ${BACKUP_DIR}"
   echo "Home Assistant config restored to: ${target_ha_dir}"
+  echo "Storage-backed dashboards restored: ${restored_dashboard_count}"
   echo "Tailscale config restored if archive existed: ${TAILSCALE_ARCHIVE}"
 }
 

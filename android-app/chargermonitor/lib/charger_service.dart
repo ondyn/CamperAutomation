@@ -36,6 +36,7 @@ class ChargerState {
       'device_type': deviceType,
       'device_type_code': deviceTypeCode,
       'last_update_ms': lastUpdateMs,
+        'alarm_flags_active_high': true,
       'data': d == null
           ? null
           : <String, dynamic>{

@@ -12,6 +12,34 @@ from .const import CHARGER_API_URL, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+_ALARM_FLAG_KEYS = (
+    "over_temp",
+    "battery_over_pressure",
+    "pv_over_pressure",
+    "battery_under_voltage",
+)
+
+
+def _normalize_alarm_flags(data: dict) -> dict:
+    """Convert legacy healthy-state flags to true-on-alarm values."""
+    if data.get("alarm_flags_active_high") is True:
+        return data
+
+    flags = data.get("flags")
+    if not isinstance(flags, dict):
+        return data
+
+    normalized_flags = dict(flags)
+    for key in _ALARM_FLAG_KEYS:
+        value = normalized_flags.get(key)
+        if isinstance(value, bool):
+            normalized_flags[key] = not value
+
+    normalized = dict(data)
+    normalized["flags"] = normalized_flags
+    normalized["alarm_flags_active_high"] = True
+    return normalized
+
 
 class ChargerDataCoordinator(DataUpdateCoordinator[dict]):
     """Coordinator that fetches charger state from the Flutter REST endpoint."""
@@ -30,6 +58,6 @@ class ChargerDataCoordinator(DataUpdateCoordinator[dict]):
             async with asyncio.timeout(5):
                 resp = await self._session.get(CHARGER_API_URL)
                 resp.raise_for_status()
-                return await resp.json()
+                return _normalize_alarm_flags(await resp.json())
         except Exception as err:
             raise UpdateFailed(f"Charger API error: {err}") from err

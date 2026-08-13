@@ -14,6 +14,7 @@ CONFIG_ARCHIVE="${BACKUP_DIR}/termux-config.tar.gz"
 HA_ARCHIVE="${BACKUP_DIR}/homeassistant-config.tar.gz"
 TAILSCALE_ARCHIVE="${BACKUP_DIR}/tailscale-config.tar.gz"
 PKG_LIST="${BACKUP_DIR}/termux-packages.txt"
+HA_DASHBOARD_LIST="${BACKUP_DIR}/homeassistant-dashboards.txt"
 MANIFEST_FILE="${BACKUP_DIR}/manifest.txt"
 METADATA_FILE="${BACKUP_DIR}/metadata.env"
 
@@ -118,14 +119,40 @@ if find "${TMP_DIR}/tailscale" -mindepth 1 -print -quit >/dev/null 2>&1; then
 fi
 
 HA_CONFIG_SOURCE=""
-for candidate in "${HOME}/.suroot/.homeassistant" "${HOME}/.homeassistant"; do
-  if [ -d "${candidate}" ]; then
+for candidate in "${HOME}/.homeassistant" "${HOME}/.suroot/.homeassistant"; do
+  if [ -d "${candidate}" ] && pgrep -f -- "[[:space:]]-c[[:space:]]+${candidate}([[:space:]]|$)" >/dev/null 2>&1; then
     HA_CONFIG_SOURCE="${candidate}"
     break
   fi
 done
 
+if [ -z "${HA_CONFIG_SOURCE}" ]; then
+  for candidate in "${HOME}/.homeassistant" "${HOME}/.suroot/.homeassistant"; do
+    if [ -d "${candidate}" ]; then
+      HA_CONFIG_SOURCE="${candidate}"
+      break
+    fi
+  done
+fi
+
+HA_DASHBOARD_COUNT=0
 if [ -n "${HA_CONFIG_SOURCE}" ]; then
+  {
+    echo "# Home Assistant storage-backed Lovelace files"
+    for dashboard_file in "${HA_CONFIG_SOURCE}/.storage"/lovelace*; do
+      [ -f "${dashboard_file}" ] || continue
+      basename "${dashboard_file}"
+      case "$(basename "${dashboard_file}")" in
+        lovelace.dashboard_*) HA_DASHBOARD_COUNT=$((HA_DASHBOARD_COUNT + 1)) ;;
+      esac
+    done
+  } > "${HA_DASHBOARD_LIST}"
+
+  cat >>"${METADATA_FILE}" <<EOF
+HA_CONFIG_REL=${HA_CONFIG_SOURCE#${HOME}/}
+HA_STORAGE_DASHBOARD_COUNT=${HA_DASHBOARD_COUNT}
+EOF
+
   tar -C "$(dirname "${HA_CONFIG_SOURCE}")" -czf "${HA_ARCHIVE}" "$(basename "${HA_CONFIG_SOURCE}")"
   echo "homeassistant:${HA_CONFIG_SOURCE#${HOME}/}" >> "${MANIFEST_FILE}"
 fi
@@ -138,6 +165,10 @@ Created files:
   ${MANIFEST_FILE}
   ${PKG_LIST}
 EOF
+
+if [ -f "${HA_DASHBOARD_LIST}" ]; then
+  echo "  ${HA_DASHBOARD_LIST} (${HA_DASHBOARD_COUNT} storage dashboards)"
+fi
 
 if [ -f "${CONFIG_ARCHIVE}" ]; then
   echo "  ${CONFIG_ARCHIVE}"

@@ -262,7 +262,7 @@ bash ~/bootstrap_termux.sh
 ```
 
 Create a configuration backup after provisioning (phone-side).
-This captures Home Assistant config/database, Tailscale config, and core Termux startup config:
+This captures Home Assistant config/database, all storage-backed Lovelace dashboards and resources under `.storage`, Tailscale config, and core Termux startup config:
 
 ```sh
 ~/scripts/termux-backup.sh
@@ -273,6 +273,14 @@ Restore from a previous backup after reinstalling Termux (phone-side):
 ```sh
 ~/scripts/termux-restore.sh ~/storage/shared/CamperAutomationBackups/<timestamp>
 ```
+
+Persistence behavior:
+
+- Home Assistant Core updates preserve the selected Home Assistant config directory, including `.storage` dashboards.
+- Termux app updates preserve Termux private app data.
+- Uninstalling/reinstalling Termux removes its private app data; create a backup first and restore it afterward.
+- Android display settings such as `screen_off_timeout` and `stay_on_while_plugged_in` are system settings. They survive Termux and Home Assistant updates/reinstalls, but not a factory reset.
+- The backup records the active Home Assistant config path and a dashboard inventory. Restore validates the dashboard count and refuses to replace a config used by a running Home Assistant process.
 
 Create a full Termux snapshot backup over ADB (laptop-side, requires root/Magisk):
 
