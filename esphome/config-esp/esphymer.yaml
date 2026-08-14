@@ -1,6 +1,10 @@
 esphome:
   name: esphymer
   friendly_name: EspHymer
+  on_boot:
+    - priority: -100
+      then:
+        - script.execute: sample_fresh_water_level
   # platformio_options:
   #   monitor_speed: 115200
   #   board_build.mcu: esp32c3
@@ -34,6 +38,8 @@ api:
   encryption:
     key: "DxJyuDSu+sOFMlQPB3AWx5LpFdiWzI3yYjBDqvoFG9M="
   reboot_timeout: 0s
+  on_client_connected:
+    - script.execute: sample_fresh_water_level
 
 # Enable mDNS service advertisement for discovery
 mdns:
@@ -112,6 +118,12 @@ switch:
     name: "Phone Charger"
     inverted: true
 
+  - platform: gpio
+    id: fresh_water_probe_common
+    internal: true
+    pin: GPIO5
+    restore_mode: ALWAYS_OFF
+
 binary_sensor:
   - platform: gpio
     pin: GPIO7
@@ -121,6 +133,51 @@ binary_sensor:
   - platform: truma_inetbox
     name: "CP Plus alive"
     type: CP_PLUS_CONNECTED
+
+  - platform: gpio
+    id: fresh_water_25_input
+    internal: true
+    pin:
+      number: GPIO0
+      mode:
+        input: true
+        pulldown: true
+    use_interrupt: false
+
+  - platform: gpio
+    id: fresh_water_50_input
+    internal: true
+    pin:
+      number: GPIO1
+      mode:
+        input: true
+        pulldown: true
+    use_interrupt: false
+
+  - platform: gpio
+    id: fresh_water_75_input
+    internal: true
+    pin:
+      number: GPIO3
+      mode:
+        input: true
+        pulldown: true
+    use_interrupt: false
+
+  - platform: gpio
+    id: fresh_water_100_input
+    internal: true
+    pin:
+      number: GPIO4
+      mode:
+        input: true
+        pulldown: true
+    use_interrupt: false
+
+  - platform: template
+    id: fresh_water_tank_full
+    name: "Fresh Water Tank Full"
+    device_class: moisture
 
 sensor:
   - platform: truma_inetbox
@@ -260,6 +317,38 @@ sensor:
     update_interval: 200ms
     unit_of_measurement: "°"
 
+  - platform: template
+    id: fresh_water_level
+    name: "Fresh Water Level"
+    unit_of_measurement: "%"
+    device_class: moisture
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+
+script:
+  - id: sample_fresh_water_level
+    mode: single
+    then:
+      - switch.turn_on: fresh_water_probe_common
+      - delay: 25ms
+      - lambda: |-
+          float level = 0.0f;
+          if (id(fresh_water_25_input).state) level = 25.0f;
+          if (id(fresh_water_50_input).state) level = 50.0f;
+          if (id(fresh_water_75_input).state) level = 75.0f;
+          if (id(fresh_water_100_input).state) level = 100.0f;
+
+          if (!id(fresh_water_level).has_state() || id(fresh_water_level).state != level) {
+            id(fresh_water_level).publish_state(level);
+          }
+
+          const bool tank_full = id(fresh_water_100_input).state;
+          if (!id(fresh_water_tank_full).has_state() || id(fresh_water_tank_full).state != tank_full) {
+            id(fresh_water_tank_full).publish_state(tank_full);
+          }
+      - switch.turn_off: fresh_water_probe_common
+
 interval:
   - interval: 200ms
     then:
@@ -268,3 +357,7 @@ interval:
             - switch.is_on: switch1
           then:
             - component.update: accel
+
+  - interval: 1s
+    then:
+      - script.execute: sample_fresh_water_level
