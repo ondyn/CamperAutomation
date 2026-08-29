@@ -7,7 +7,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'background_main.dart';
-import 'charger_service.dart';
+import 'device_preferences.dart';
 import 'protocol.dart';
 
 void main() async {
@@ -82,7 +82,7 @@ class _DeviceScanPageState extends State<DeviceScanPage> {
     });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _ensurePermissionsAndStartScan();
+      _restoreDeviceOrStartScan();
     });
   }
 
@@ -146,6 +146,40 @@ class _DeviceScanPageState extends State<DeviceScanPage> {
     }
 
     await _startScan();
+  }
+
+  Future<void> _restoreDeviceOrStartScan() async {
+    final SavedChargerDevice? savedDevice =
+        await ChargerDevicePreferences.load();
+    if (savedDevice == null) {
+      await _ensurePermissionsAndStartScan();
+      return;
+    }
+
+    final bool granted = await _requestPermissions();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _permissionsGranted = granted;
+      _scanIssue = granted
+          ? null
+          : 'Nearby devices permission is required to connect.';
+    });
+    if (!granted) {
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => DeviceDashboardPage(
+          deviceMac: savedDevice.mac,
+          deviceName: savedDevice.name ?? 'Solar charger',
+        ),
+      ),
+    );
+    if (mounted) {
+      await _startScan();
+    }
   }
 
   Future<void> _startScan() async {
@@ -375,6 +409,7 @@ class _DeviceScanPageState extends State<DeviceScanPage> {
                     ],
                   ),
                   onTap: () {
+                    ChargerDevicePreferences.save(device.remoteId.str, name: name);
                     Navigator.of(context).push(
                       MaterialPageRoute<void>(
                         builder: (_) => DeviceDashboardPage(
@@ -422,6 +457,7 @@ class _DeviceDashboardPageState extends State<DeviceDashboardPage> {
     // Tell background service which device to connect to.
     FlutterBackgroundService().invoke('set_device', <String, dynamic>{
       'mac': widget.deviceMac,
+      'name': widget.deviceName,
     });
     // Listen for state updates from the background service.
     _stateSub = FlutterBackgroundService()
@@ -507,6 +543,13 @@ class _DeviceDashboardPageState extends State<DeviceDashboardPage> {
     });
   }
 
+  Future<void> _disconnectAndSelectAnother() async {
+    FlutterBackgroundService().invoke('disconnect_device');
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final RealtimeData? d = _realtime;
@@ -514,6 +557,13 @@ class _DeviceDashboardPageState extends State<DeviceDashboardPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.deviceName),
+        actions: <Widget>[
+          IconButton(
+            tooltip: 'Disconnect and select another device',
+            onPressed: _disconnectAndSelectAnother,
+            icon: const Icon(Icons.bluetooth_disabled),
+          ),
+        ],
       ),
       body: SafeArea(
         child: ListView(

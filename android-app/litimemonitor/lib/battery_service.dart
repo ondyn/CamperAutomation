@@ -133,6 +133,23 @@ class LiTimeBatteryService {
     _connect();
   }
 
+  Future<void> disconnect() async {
+    _stopped = true;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    await _clearTransport();
+    try {
+      await _connectionSubscription?.cancel();
+    } catch (_) {}
+    _connectionSubscription = null;
+    try {
+      await _device?.disconnect();
+    } catch (_) {}
+    _device = null;
+    _reconnectAttempt = 0;
+    _emit(const BatteryState());
+  }
+
   Future<void> stop() async {
     _stopped = true;
     _reconnectTimer?.cancel();

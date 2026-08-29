@@ -117,11 +117,29 @@ class ChargerService {
 
   /// Connect to a BLE device identified by MAC [mac]. Reconnects automatically.
   void setTargetDevice(String mac) {
+    _stopped = false;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _reconnectAttempt = 0;
     _device = BluetoothDevice.fromId(mac);
     _connect();
+  }
+
+  Future<void> disconnect() async {
+    _stopped = true;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    await _clearTransport();
+    try {
+      await _connSub?.cancel();
+    } catch (_) {}
+    _connSub = null;
+    try {
+      await _device?.disconnect();
+    } catch (_) {}
+    _device = null;
+    _reconnectAttempt = 0;
+    _emit(const ChargerState());
   }
 
   Future<void> stop() async {

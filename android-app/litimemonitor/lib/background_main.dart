@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 
 import 'battery_service.dart';
+import 'device_preferences.dart';
 import 'rest_server.dart';
 
 const String _defaultRemoteId = String.fromEnvironment(
@@ -28,10 +29,16 @@ void backgroundMain(ServiceInstance service) async {
     service.invoke('state_update', battery.state.toJson());
   });
 
-  service.on('set_device').listen((Map<String, dynamic>? data) {
+  final SavedLiTimeDevice? savedDevice = await LiTimeDevicePreferences.load();
+  if (savedDevice != null) {
+    battery.setTargetDevice(savedDevice.remoteId, name: savedDevice.name);
+  }
+
+  service.on('set_device').listen((Map<String, dynamic>? data) async {
     final String? remoteId = data?['remote_id'] as String?;
     final String? name = data?['name'] as String?;
     if (remoteId != null && remoteId.isNotEmpty) {
+      await LiTimeDevicePreferences.save(remoteId, name: name);
       battery.setTargetDevice(remoteId, name: name);
     }
   });
@@ -42,6 +49,11 @@ void backgroundMain(ServiceInstance service) async {
       name: _defaultDeviceName.isEmpty ? null : _defaultDeviceName,
     );
   }
+
+  service.on('disconnect_device').listen((_) async {
+    await LiTimeDevicePreferences.clear();
+    await battery.disconnect();
+  });
 
   service.on('shutdown_battery').listen((_) async {
     try {

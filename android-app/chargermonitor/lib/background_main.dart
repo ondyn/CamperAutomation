@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 
 import 'charger_service.dart';
+import 'device_preferences.dart';
 import 'rest_server.dart';
 
 /// Entry point for the Android foreground service.
@@ -27,12 +28,24 @@ void backgroundMain(ServiceInstance service) async {
     service.invoke('state_update', charger.state.toJson());
   });
 
+  final SavedChargerDevice? savedDevice = await ChargerDevicePreferences.load();
+  if (savedDevice != null) {
+    charger.setTargetDevice(savedDevice.mac);
+  }
+
   // Handle device selection sent from the UI.
-  service.on('set_device').listen((Map<String, dynamic>? data) {
+  service.on('set_device').listen((Map<String, dynamic>? data) async {
     final String? mac = data?['mac'] as String?;
+    final String? name = data?['name'] as String?;
     if (mac != null && mac.isNotEmpty) {
+      await ChargerDevicePreferences.save(mac, name: name);
       charger.setTargetDevice(mac);
     }
+  });
+
+  service.on('disconnect_device').listen((_) async {
+    await ChargerDevicePreferences.clear();
+    await charger.disconnect();
   });
 
   // Handle graceful stop.

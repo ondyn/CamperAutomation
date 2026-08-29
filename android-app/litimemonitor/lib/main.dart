@@ -7,6 +7,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'background_main.dart';
+import 'device_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -69,7 +70,9 @@ class _DeviceScanPageState extends State<DeviceScanPage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _requestAndScan());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _restoreDeviceOrScan(),
+    );
   }
 
   @override
@@ -79,7 +82,7 @@ class _DeviceScanPageState extends State<DeviceScanPage> {
     super.dispose();
   }
 
-  Future<void> _requestAndScan() async {
+  Future<bool> _requestPermissions() async {
     if (Platform.isAndroid) {
       final Map<Permission, PermissionStatus> statuses = await <Permission>[
         Permission.bluetoothScan,
@@ -91,8 +94,38 @@ class _DeviceScanPageState extends State<DeviceScanPage> {
         if (mounted) {
           setState(() => _issue = 'Nearby devices permission is required.');
         }
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<void> _restoreDeviceOrScan() async {
+    final SavedLiTimeDevice? savedDevice =
+        await LiTimeDevicePreferences.load();
+    if (savedDevice != null) {
+      if (!await _requestPermissions() || !mounted) {
         return;
       }
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => BatteryDashboardPage(
+            remoteId: savedDevice.remoteId,
+            deviceName: savedDevice.name ?? 'LiTime battery',
+          ),
+        ),
+      );
+      if (mounted) {
+        await _scan();
+      }
+      return;
+    }
+    await _requestAndScan();
+  }
+
+  Future<void> _requestAndScan() async {
+    if (!await _requestPermissions()) {
+      return;
     }
     await _scan();
   }
@@ -195,6 +228,7 @@ class _DeviceScanPageState extends State<DeviceScanPage> {
       '[LiTimeMonitor] Selected $name (${result.device.remoteId.str}), '
       'services=${result.advertisementData.serviceUuids.join(',')}',
     );
+    await LiTimeDevicePreferences.save(result.device.remoteId.str, name: name);
     if (!mounted) {
       return;
     }
@@ -360,6 +394,13 @@ class _BatteryDashboardPageState extends State<BatteryDashboardPage> {
     FlutterBackgroundService().invoke('shutdown_battery');
   }
 
+  Future<void> _disconnectAndSelectAnother() async {
+    FlutterBackgroundService().invoke('disconnect_device');
+    if (mounted) {
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final Map<String, dynamic>? data = _state['data'] as Map<String, dynamic>?;
@@ -369,6 +410,11 @@ class _BatteryDashboardPageState extends State<BatteryDashboardPage> {
       appBar: AppBar(
         title: Text(widget.deviceName),
         actions: <Widget>[
+          IconButton(
+            tooltip: 'Disconnect and select another device',
+            onPressed: _disconnectAndSelectAnother,
+            icon: const Icon(Icons.bluetooth_disabled),
+          ),
           IconButton(
             tooltip: 'Power off battery',
             onPressed: connection == 'connected' && !_shuttingDown
