@@ -1,0 +1,34 @@
+# INA219 high-side battery monitor on the shared I2C bus.
+# Bi-directional: current/power are signed, negative while the battery discharges.
+#
+# shunt_resistance must match the physical shunt:
+#   0.1 ohm      -> the 0.1 Ω resistor fitted on most INA219 breakout boards
+#   0.00075 ohm  -> external 75 mV / 100 A bar shunt
+#   0.0015 ohm   -> external 75 mV /  50 A bar shunt
+# max_current only sizes the internal calibration register; keep it above the
+# largest current you expect to measure.
+sensor:
+  - platform: ina219
+    id: ina219_hub
+    i2c_id: bus_a
+    address: 0x40
+    shunt_resistance: 0.1 ohm
+    max_voltage: 32.0V
+    max_current: 3.2A
+    update_interval: 30s
+    bus_voltage:
+      name: "Battery Voltage"
+      id: battery_voltage
+    current:
+      name: "Battery Current"
+      id: battery_current
+    power:
+      name: "Battery Power"
+    shunt_voltage:
+      name: "Battery Shunt Voltage"
+      entity_category: diagnostic
+
+interval:
+  - interval: 15s
+    then:
+      - lambda: 'if (id(report_fault)) id(report_fault)("INA219", id(ina219_hub));'

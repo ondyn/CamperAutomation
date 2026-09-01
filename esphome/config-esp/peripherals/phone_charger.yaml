@@ -1,0 +1,25 @@
+# Opto-isolated P-MOS driver for the charger feeding the Home Assistant phone.
+#
+# Fail-safe direction is ON: the phone *is* the Home Assistant server, so while this
+# node is booting or has lost the HA connection it must keep charging. Only a
+# connected HA is allowed to switch it off.
+switch:
+  - platform: gpio
+    id: phone_charger
+    pin: GPIO16
+    name: "Phone Charger"
+    inverted: true
+    restore_mode: ALWAYS_ON
+
+interval:
+  - interval: 5s
+    then:
+      - if:
+          condition:
+            # is_connected_with_state_subscription() ignores clients that only stream
+            # logs (the ESPHome dashboard), so this tracks Home Assistant specifically.
+            lambda: |-
+              return !id(api_server).is_connected_with_state_subscription() &&
+                     !id(phone_charger).state;
+          then:
+            - switch.turn_on: phone_charger

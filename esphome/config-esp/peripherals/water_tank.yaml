@@ -1,0 +1,94 @@
+# Conductive 4-step tank probe. Included once per tank with vars (see esphymer.yaml).
+#
+# The common electrode is energised only for the ~25 ms of the reading, so the
+# electrodes carry almost no DC and do not electrolyse.
+switch:
+  - platform: gpio
+    id: ${tank_id}_probe_common
+    internal: true
+    pin: ${pin_common}
+    restore_mode: ALWAYS_OFF
+
+binary_sensor:
+  - platform: gpio
+    id: ${tank_id}_25_input
+    internal: true
+    pin:
+      number: ${pin_25}
+      mode:
+        input: true
+        pulldown: true
+    use_interrupt: false
+
+  - platform: gpio
+    id: ${tank_id}_50_input
+    internal: true
+    pin:
+      number: ${pin_50}
+      mode:
+        input: true
+        pulldown: true
+    use_interrupt: false
+
+  - platform: gpio
+    id: ${tank_id}_75_input
+    internal: true
+    pin:
+      number: ${pin_75}
+      mode:
+        input: true
+        pulldown: true
+    use_interrupt: false
+
+  - platform: gpio
+    id: ${tank_id}_100_input
+    internal: true
+    pin:
+      number: ${pin_100}
+      mode:
+        input: true
+        pulldown: true
+    use_interrupt: false
+
+  - platform: template
+    id: ${tank_id}_tank_full
+    name: "${tank_name} Tank Full"
+    device_class: ${full_device_class}
+
+sensor:
+  - platform: template
+    id: ${tank_id}_level
+    name: "${tank_name} Level"
+    unit_of_measurement: "%"
+    device_class: moisture
+    state_class: measurement
+    accuracy_decimals: 0
+    update_interval: never
+
+script:
+  - id: sample_${tank_id}_level
+    mode: single
+    then:
+      - switch.turn_on: ${tank_id}_probe_common
+      - delay: 25ms
+      - lambda: |-
+          float level = 0.0f;
+          if (id(${tank_id}_25_input).state) level = 25.0f;
+          if (id(${tank_id}_50_input).state) level = 50.0f;
+          if (id(${tank_id}_75_input).state) level = 75.0f;
+          if (id(${tank_id}_100_input).state) level = 100.0f;
+
+          if (!id(${tank_id}_level).has_state() || id(${tank_id}_level).state != level) {
+            id(${tank_id}_level).publish_state(level);
+          }
+
+          const bool tank_full = id(${tank_id}_100_input).state;
+          if (!id(${tank_id}_tank_full).has_state() || id(${tank_id}_tank_full).state != tank_full) {
+            id(${tank_id}_tank_full).publish_state(tank_full);
+          }
+      - switch.turn_off: ${tank_id}_probe_common
+
+interval:
+  - interval: 1s
+    then:
+      - script.execute: sample_${tank_id}_level

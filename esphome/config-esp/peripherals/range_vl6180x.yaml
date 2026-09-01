@@ -1,0 +1,24 @@
+# VL6180X time-of-flight range + ambient light sensor on the shared I2C bus.
+#
+# Third-party component, pinned to a reviewed commit so a later upstream change
+# cannot silently enter the build.
+external_components:
+  - source:
+      type: git
+      url: https://github.com/thedayowl/esphome-vl6180x
+      ref: 3edff0aa2d62d9140f4fa0b97730142ad5db5f5f
+    components: ["vl6180x"]
+
+vl6180x:
+  - id: range_tof
+    i2c_id: bus_a
+    address: 0x29
+    update_interval: 5s
+    range:
+      name: "Range Distance"
+    range_status:
+      name: "Range Status"
+      entity_category: diagnostic
+    lux:
+      name: "Range Ambient Light"
+      update_interval: 60s

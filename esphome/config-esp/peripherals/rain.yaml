@@ -1,0 +1,87 @@
+# Resistive rain board (FC-37 / YL-83 style) read as an analog voltage on ADC1.
+#
+# Wet plates conduct, so the module's analog output drops. If your board rises
+# when wet instead, flip rain_wet_below to "false".
+substitutions:
+  rain_pin: GPIO5
+  rain_wet_below: "true"
+
+sensor:
+  - platform: adc
+    id: rain_voltage
+    pin: ${rain_pin}
+    name: "Rain Sensor Voltage"
+    unit_of_measurement: "V"
+    accuracy_decimals: 2
+    attenuation: 12db
+    update_interval: 5s
+    entity_category: diagnostic
+    filters:
+      # Rolling median: smooths ADC noise but still publishes every 5 s, so a
+      # threshold change made in HA is reflected almost immediately.
+      - median:
+          window_size: 5
+          send_every: 1
+          send_first_at: 1
+
+number:
+  - platform: template
+    name: "Rain Threshold"
+    id: rain_threshold
+    entity_category: config
+    icon: "mdi:weather-rainy"
+    unit_of_measurement: "V"
+    min_value: 0.0
+    max_value: 3.3
+    step: 0.01
+    initial_value: 1.5
+    restore_value: true
+    optimistic: true
+    mode: box
+
+  # Volts the reading must travel back past the threshold before "dry" is accepted.
+  # Set to 0 while calibrating, then raise it until the reading stops chattering.
+  # read the dry voltage, wet it, read again, then put the threshold between them and hysteresis at roughly a fifth of the gap.
+  - platform: template
+    name: "Rain Hysteresis"
+    id: rain_hysteresis
+    entity_category: config
+    icon: "mdi:arrow-expand-vertical"
+    unit_of_measurement: "V"
+    min_value: 0.0
+    max_value: 1.0
+    step: 0.01
+    initial_value: 0.05
+    restore_value: true
+    optimistic: true
+    mode: box
+
+binary_sensor:
+  - platform: template
+    name: "Rain Detected"
+    id: rain_detected
+    device_class: moisture
+    lambda: |-
+      if (!id(rain_voltage).has_state()) return {};
+      const float v = id(rain_voltage).state;
+      const float t = id(rain_threshold).state;
+      const float h = id(rain_hysteresis).state;
+
+      bool wet, dry;
+      if (${rain_wet_below}) {
+        wet = v < t;
+        dry = v > t + h;
+      } else {
+        wet = v > t;
+        dry = v < t - h;
+      }
+
+      if (wet) return true;
+      if (dry) return false;
+      return {};  // inside the hysteresis band: hold the previous state
+    filters:
+      # Debounce only. "Roof is still wet after the shower" is policy, so it belongs
+      # in a Home Assistant automation `for:`, not in firmware where retuning it
+      # costs a reflash.
+      - delayed_on: 5s
+      - delayed_off: 15s

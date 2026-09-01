@@ -281,6 +281,14 @@ else
   log "  Settings > Apps > Manage apps > Termux:Boot > Battery saver > No restrictions"
 fi
 
+# Prevent notification-triggered ambient display after a manual screen lock.
+log_header "Step 3c: Configure lock-screen notification wake"
+if bash "${ROOT_DIR}/provisioning/adb/11_configure_lock_screen_notification_wake.sh" >> "${ORCHESTRATOR_LOG}" 2>&1; then
+  log "✓ Lock-screen notification wake configuration checked"
+else
+  warn "Could not check lock-screen notification wake configuration"
+fi
+
 # Step 4: Debloat (optional, recommended for HA-dedicated device)
 if [ "${SKIP_DEBLOAT}" -eq 0 ]; then
   log_header "Step 4: Remove Xiaomi/MIUI bloatware"
@@ -370,6 +378,7 @@ fi
 
 if [ "${SKIP_HA}" -eq 0 ]; then
   run_ssh_phase "Step 10: Install Home Assistant Core" bash "${ROOT_DIR}/provisioning/ssh/10_install_homeassistant_core.sh"
+  run_ssh_phase "Step 10a: Repair Home Assistant translation references" env SKIP_RESTART=1 bash "${ROOT_DIR}/provisioning/ssh/23_fix_ha_translation_keys.sh"
   run_ssh_phase "Step 11: Install HA startup requirements" bash "${ROOT_DIR}/provisioning/ssh/16_install_ha_startup_requirements.sh"
 else
   log_header "Step 10-11: Home Assistant installation (SKIPPED)"

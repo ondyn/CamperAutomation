@@ -1,48 +1,50 @@
 #!/usr/bin/env bash
 # fix-espidf.sh — applied at container startup via docker-compose entrypoint override.
 #
-# Problem 1 (ESP-IDF 5.5.4 only): duplicate source file names:
-#   efuse/esp32c3/esp_efuse_fields.c  AND  efuse/src/esp_efuse_fields.c
-#   efuse/esp32c3/esp_efuse_utility.c AND  efuse/src/esp_efuse_utility.c
-# Fix: rename the chip-specific copies to avoid the basename collision, then
-# update sources.cmake to reference the renamed files.
+# Problem 1: duplicate source file basenames inside the efuse component, e.g.
+#   efuse/<variant>/esp_efuse_fields.c  AND  efuse/src/esp_efuse_fields.c
+#   efuse/<variant>/esp_efuse_utility.c AND  efuse/src/esp_efuse_utility.c
+# PlatformIO flattens object names, so CMake reports "Multiple ways to build the
+# same target". Fix: rename the chip-specific copies, then update sources.cmake.
+# Applies to every esp32* variant dir, since the collision is not chip specific.
 #
 # Problem 2 (ESP-IDF 5.5.x only): system_time.c in two components:
 #   components/esp_system/system_time.c
 #   components/esp_timer/src/system_time.c
 # Fix: rename the esp_timer copy and update its CMakeLists.txt.
 #
-# ESP-IDF 6.0.x reorganised these components so neither collision exists;
-# the functions below are no-ops on 6.0.x (file/dir guards exit early).
+# ESP-IDF 6.0.x reorganised esp_timer so problem 2 is a no-op there.
 # Both fixes are idempotent — safe to run on every container start.
 
 set -euo pipefail
 
-EFUSE_FIX_PAIRS=(
-  "esp_efuse_fields.c:esp32c3_efuse_fields.c"
-  "esp_efuse_utility.c:esp32c3_efuse_utility.c"
+EFUSE_FIX_FILES=(
+  "esp_efuse_fields.c"
+  "esp_efuse_utility.c"
 )
 
 fix_efuse_dir() {
   local base="$1"
-  local dir="${base}/components/efuse/esp32c3"
-  local cmake="${dir}/sources.cmake"
-
-  if [[ ! -d "$dir" ]]; then
-    return 0
-  fi
-
   local changed=0
-  for pair in "${EFUSE_FIX_PAIRS[@]}"; do
-    local old="${pair%%:*}"
-    local new="${pair##*:}"
-    if [[ -f "${dir}/${old}" ]]; then
-      mv "${dir}/${old}" "${dir}/${new}"
-      # Update sources.cmake reference
-      sed -i "s/\"${old}\"/\"${new}\"/g" "$cmake"
-      echo "[fix-espidf] Renamed ${dir}/${old} -> ${new}"
-      changed=1
-    fi
+
+  for dir in "${base}"/components/efuse/esp32*; do
+    [[ -d "$dir" ]] || continue
+    local cmake="${dir}/sources.cmake"
+    [[ -f "$cmake" ]] || continue
+
+    local variant
+    variant="$(basename "$dir")"
+
+    for old in "${EFUSE_FIX_FILES[@]}"; do
+      # esp_efuse_fields.c -> esp32s3_efuse_fields.c
+      local new="${variant}_${old#esp_}"
+      if [[ -f "${dir}/${old}" ]]; then
+        mv "${dir}/${old}" "${dir}/${new}"
+        sed -i "s/\"${old}\"/\"${new}\"/g" "$cmake"
+        echo "[fix-espidf] Renamed ${dir}/${old} -> ${new}"
+        changed=1
+      fi
+    done
   done
 
   if [[ $changed -eq 1 ]]; then

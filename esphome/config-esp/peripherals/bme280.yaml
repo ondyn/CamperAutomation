@@ -1,0 +1,17 @@
+# BME280 cabin temperature / humidity / pressure on the shared I2C bus.
+sensor:
+  - platform: bme280_i2c
+    id: bme280_hub
+    i2c_id: bus_a
+    address: 0x76
+    temperature:
+      name: "BME280 Temperature"
+    pressure:
+      name: "BME280 Pressure"
+    humidity:
+      name: "BME280 Humidity"
+
+interval:
+  - interval: 15s
+    then:
+      - lambda: 'if (id(report_fault)) id(report_fault)("BME280", id(bme280_hub));'

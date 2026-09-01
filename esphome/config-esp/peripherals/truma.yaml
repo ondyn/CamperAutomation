@@ -1,0 +1,48 @@
+# Truma iNetBox over LIN, bridged to UART1 by an external LIN transceiver.
+external_components:
+  # Local fork of Fabian-Schmidt/esphome-truma_inetbox, fixed for ESPHome 2026.x
+  # (get_uart_event_queue removed from IDFUARTComponent; we now own the event queue in LinBusListener).
+  # Path is resolved against the main config dir, not this file.
+  - source:
+      type: local
+      path: external_components
+    components: ["truma_inetbox"]
+
+uart:
+  - id: lin_uart_bus
+    tx_pin: GPIO17
+    rx_pin: GPIO18
+    baud_rate: 9600
+    stop_bits: 2
+
+truma_inetbox:
+  id: truma_lin
+  uart_id: lin_uart_bus
+
+binary_sensor:
+  - platform: truma_inetbox
+    name: "CP Plus alive"
+    type: CP_PLUS_CONNECTED
+
+sensor:
+  - platform: truma_inetbox
+    name: "Current Room Temperature"
+    type: CURRENT_ROOM_TEMPERATURE
+  - platform: truma_inetbox
+    name: "Current Water Temperature"
+    type: CURRENT_WATER_TEMPERATURE
+  - platform: truma_inetbox
+    name: "Target Room Temperature"
+    type: TARGET_ROOM_TEMPERATURE
+  - platform: truma_inetbox
+    name: "Target Water Temperature"
+    type: TARGET_WATER_TEMPERATURE
+
+interval:
+  - interval: 15s
+    then:
+      - lambda: |-
+          if (id(report_fault)) {
+            id(report_fault)("LIN UART", id(lin_uart_bus));
+            id(report_fault)("Truma", id(truma_lin));
+          }

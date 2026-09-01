@@ -1,0 +1,6 @@
+# HC-SR501 PIR motion detector (5 V supply, 3.3 V-safe output).
+binary_sensor:
+  - platform: gpio
+    pin: GPIO4
+    name: "PIR Sensor"
+    device_class: motion

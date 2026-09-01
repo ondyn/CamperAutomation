@@ -280,6 +280,7 @@ Persistence behavior:
 - Termux app updates preserve Termux private app data.
 - Uninstalling/reinstalling Termux removes its private app data; create a backup first and restore it afterward.
 - Android display settings such as `screen_off_timeout` and `stay_on_while_plugged_in` are system settings. They survive Termux and Home Assistant updates/reinstalls, but not a factory reset.
+- On Xiaomi MIUI/HyperOS, the USB provisioning flow disables the Ambient display policy through Magisk so a notification cannot relight the display after pressing the power button. If a firmware policy blocks that write, the flow opens Display settings; disable **When notifications arrive** (or Ambient display entirely). This keeps the Home Assistant app lit while it is open, but leaves it off after a manual lock; power-button and double-tap wake remain available.
 - The backup records the active Home Assistant config path and a dashboard inventory. Restore validates the dashboard count and refuses to replace a config used by a running Home Assistant process.
 
 Create a full Termux snapshot backup over ADB (laptop-side, requires root/Magisk):

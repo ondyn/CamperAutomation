@@ -58,12 +58,11 @@ with open(src_path, "r") as f:
 
 is_upgrade = False
 
-if "_resolve_key_refs" in content and "_load_common_strings" in content:
-    # v3: direct flat-dict lookup (fixes prefixed keys like component.X.Y).
-    if "# v3: direct-flat-lookup" in content:
-        print("SKIP: patch v3 already applied.")
+if "_resolve_key_refs" in content:
+    if "# v5: import-time-component-references" in content:
+        print("SKIP: patch v5 already applied.")
         sys.exit(0)
-    print("Upgrading patch to v3 (direct flat-dict lookup for component refs)...")
+    print("Upgrading patch to v5 (import-time component references)...")
     is_upgrade = True
 
 if "_resolve_key_refs" in content:
@@ -94,52 +93,52 @@ RESOLVER = '''
 # HA pip packages ship translation files with unresolved [%key:X::Y::Z%] refs.
 # HA release builds resolve these; plain pip installs do not, so the frontend
 # shows raw keys like "[%key:common::state::off%]" instead of "Off".
-# Resolved here at cache-build time via homeassistant/strings.json.
+# Resolved here at cache-build time via component translation files.
 _KEY_RE = re.compile(r"\\[%key:([^%]+)%\\]")
 
 
-def _load_common_strings() -> dict[str, str]:
-    """Load and flatten homeassistant/strings.json at import time."""
+def _load_component_reference_strings() -> dict[str, str]:
+    """Load component strings for resolving references across cache categories."""
     try:
         import json as _json
-        _ha_root = pathlib.Path(__file__).parent.parent
-        raw = _json.loads((_ha_root / "strings.json").read_bytes().decode("utf-8"))
-        flat = recursive_flatten("", raw)
-        return {k.lstrip("."): v for k, v in flat.items()}
+        _components = pathlib.Path(__file__).parent.parent / "components"
+        references: dict[str, str] = {}
+        for component_dir in _components.iterdir():
+            if not component_dir.is_dir():
+                continue
+            source = component_dir / "strings.json"
+            if not source.is_file():
+                continue
+            raw = _json.loads(source.read_bytes().decode("utf-8"))
+            references.update(
+                recursive_flatten(f"component.{component_dir.name}.", raw)
+            )
+        return references
     except Exception:  # noqa: BLE001
         return {}
 
 
 # Loaded once at import time — before the async event loop starts.
-_COMMON_STRINGS: dict[str, str] = _load_common_strings()
+_COMPONENT_REFERENCE_STRINGS: dict[str, str] = _load_component_reference_strings()
 
 
 def _resolve_key_refs(flat: dict[str, str]) -> dict[str, str]:
     """Replace [%key:X::Y::Z%] refs with human-readable strings.
 
-    # v3: direct-flat-lookup
-
-    _build_category_cache calls recursive_flatten(prefix, resource) with
-    prefix = 'component.{component}.{category}.' so ALL keys in flat carry
-    that full prefix, e.g.:
-      component.binary_sensor.entity_component.gas.state.on  -> 'Detected'
-      component.binary_sensor.entity_component.motion.state.on
-          -> '[%key:component::binary_sensor::entity_component::gas::state::on%]'
+    # v5: import-time-component-references
 
     Resolution order:
-    1. Direct lookup of the full dotted path in flat (self-referential refs).
-    2. Lookup in strings.json (common::state::off, etc.).
+    1. Direct lookup in the category currently being built.
+    2. Lookup in the bundled component source strings.
     """
 
     def _resolve(v: str, depth: int = 0) -> str:
         if depth > 3 or not isinstance(v, str) or not _KEY_RE.fullmatch(v):
             return v
         lookup = v[6:-2].replace("::", ".")
-        # 1. Full-path lookup in flat (handles component-scoped self-refs)
         if lookup in flat:
             return _resolve(flat[lookup], depth + 1)
-        # 2. strings.json common refs (common::state::off, etc.)
-        return _COMMON_STRINGS.get(lookup, v)
+        return _resolve(_COMPONENT_REFERENCE_STRINGS.get(lookup, v), depth + 1)
 
     return {k: _resolve(v) for k, v in flat.items()}
 
@@ -157,7 +156,6 @@ content = content.replace(
 )
 
 # 3. Call _resolve_key_refs after recursive_flatten in _build_category_cache
-#    (skip on upgrade — the call was already injected by a previous patch)
 if not is_upgrade:
     MARKER = (
         "                flat = recursive_flatten(prefix, resource)\n"
@@ -172,11 +170,18 @@ if not is_upgrade:
         print("ERROR: _build_category_cache marker not found", file=sys.stderr)
         sys.exit(1)
     content = content.replace(MARKER, REPLACEMENT, 1)
+else:
+    OLD_CALL = "                flat = _resolve_key_refs(language, flat)"
+    NEW_CALL = "                flat = _resolve_key_refs(flat)"
+    if OLD_CALL not in content:
+        print("ERROR: existing _resolve_key_refs call not found", file=sys.stderr)
+        sys.exit(1)
+    content = content.replace(OLD_CALL, NEW_CALL, 1)
 
 # Verify
 assert "_resolve_key_refs(flat)" in content
-assert "_COMMON_STRINGS" in content
-assert "_load_common_strings" in content
+assert "_COMPONENT_REFERENCE_STRINGS" in content
+assert "_load_component_reference_strings" in content
 
 with open(src_path, "w") as f:
     f.write(content)
@@ -185,22 +190,15 @@ PYEOF
 
 echo "Applying translation.py patch..."
 
-# Pull current translation.py from device (needs root; stage via /data/local/tmp first)
-SRC_STAGE="/data/local/tmp/ha_translation_src.py"
-adb shell "su -c 'cp ${HA_TRANS} ${SRC_STAGE} && chmod 644 ${SRC_STAGE}'"
-adb pull "${SRC_STAGE}" /tmp/ha_translation_current.py >/dev/null
-adb shell "rm -f ${SRC_STAGE}" >/dev/null 2>&1 || true
-
-# Apply patch locally
-python3 /tmp/ha_translation_patch.py /tmp/ha_translation_current.py
-
-# Push patched file back
-adb push /tmp/ha_translation_current.py "${STAGE}" >/dev/null
-adb shell "su -c 'cp ${HA_TRANS} ${HA_TRANS}.bak && cp ${STAGE} ${HA_TRANS} && chmod 644 ${HA_TRANS} && rm -f ${STAGE}'"
+# Stage the patch where the Termux app can read it, then run it as Termux.
+# Android's root SELinux context cannot reliably access Termux private storage.
+adb push /tmp/ha_translation_patch.py "${STAGE}" >/dev/null
+adb shell "run-as com.termux /data/data/com.termux/files/usr/bin/sh -c 'backup_dir=/data/data/com.termux/files/home/.cache/provisioning; mkdir -p \"\$backup_dir\" && cp ${HA_TRANS} \"\$backup_dir/translation.py.$(date +%Y%m%d-%H%M%S).bak\" && /data/data/com.termux/files/home/.venv/bin/python ${STAGE} ${HA_TRANS}'"
+adb shell "rm -f ${STAGE}"
 echo "translation.py patched on device."
 
 # Clean up temp files
-rm -f /tmp/ha_translation_current.py /tmp/ha_translation_patch.py
+rm -f /tmp/ha_translation_patch.py
 
 # ── Restart HA ────────────────────────────────────────────────────────────────
 if [ "${SKIP_RESTART:-0}" = "1" ]; then
