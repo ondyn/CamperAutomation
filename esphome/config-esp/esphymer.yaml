@@ -8,7 +8,7 @@
 # under peripherals/ and is switched here. Everything below this block is the
 # core the node cannot run without: board, radio, API, status LED, diagnostics.
 packages:
-  # temperature:   !include peripherals/temperature_dallas.yaml
+  temperature:   !include peripherals/temperature_dallas.yaml
   # bme280:        !include peripherals/bme280.yaml
   truma:         !include peripherals/truma.yaml
   pir:           !include peripherals/pir.yaml
@@ -277,7 +277,7 @@ interval:
           const bool fast_phase = (tick % 4) < 2;
           const bool slow_phase = (tick % 20) < 10;
 
-          const std::string note = id(status_led_notification).state;
+          const std::string note = id(status_led_notification).current_option().str();
 
           if (!id(wifi_comp).is_connected()) {
             r = 1.0f; g = 0.0f; b = 1.0f; on = fast_phase;            // violet

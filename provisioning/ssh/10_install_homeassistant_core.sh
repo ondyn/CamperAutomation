@@ -197,6 +197,7 @@ echo "Establishing SSH session (password should be requested once)..."
 "${SCP_TRANSPORT[@]}" "${SCP_OPTS[@]}" "${ROOT_DIR}/scripts/hassctl.sh" "${PHONE_USER}@${PHONE_HOST}:~/scripts/hassctl.sh"
 "${SCP_TRANSPORT[@]}" "${SCP_OPTS[@]}" "${ROOT_DIR}/scripts/termux-backup.sh" "${PHONE_USER}@${PHONE_HOST}:~/scripts/termux-backup.sh"
 "${SCP_TRANSPORT[@]}" "${SCP_OPTS[@]}" "${ROOT_DIR}/scripts/termux-restore.sh" "${PHONE_USER}@${PHONE_HOST}:~/scripts/termux-restore.sh"
+"${SCP_TRANSPORT[@]}" "${SCP_OPTS[@]}" "${ROOT_DIR}/provisioning/ssh/ha_translation_patch.py" "${PHONE_USER}@${PHONE_HOST}:~/.provisioning/ha_translation_patch.py"
 "${SCP_TRANSPORT[@]}" "${SCP_OPTS[@]}" "${LOCK_FILE}" "${PHONE_USER}@${PHONE_HOST}:~/.provisioning/locks/${LOCK_BASENAME}"
 
 if [ -f "${PYTHON_FREEZE_FILE}" ]; then
@@ -506,6 +507,13 @@ for comp_dir in base.iterdir():
         count += 1
 print(f"Created {count} translations/en.json files")
 PYEOF
+
+# Resolve [%key:X::Y::Z%] refs (e.g. "[%key:common::state::off%]") at
+# cache-build time, so the frontend shows "Off" instead of the raw key text.
+# Re-applied unconditionally on every (re)install since the venv above is
+# recreated from scratch (rm -rf "$VENV") and any prior patch is lost with it.
+echo "Applying Home Assistant translation-key resolver patch..."
+"$VENV/bin/python" "$HOME/.provisioning/ha_translation_patch.py" "$VENV/lib/python3.13/site-packages/homeassistant/helpers/translation.py"
 
 "$VENV/bin/python" -m pip freeze --all | LC_ALL=C sort > "$PYTHON_FREEZE_PATH"
 REMOTE_INSTALL

@@ -13,7 +13,9 @@ services:
     # image: ghcr.io/esphome/esphome:2025.4.0
     # image: ghcr.io/esphome/esphome:2024.12.0
     # image: ghcr.io/esphome/esphome:2026.4.5
-    image: ghcr.io/esphome/esphome:2026.5.1
+    # image: ghcr.io/esphome/esphome:2026.5.1
+    # havanti/esphome-truma (peripherals/truma.yaml) requires ESPHome >= 2026.8.1
+    image: ghcr.io/esphome/esphome:2026.8.1
     # fix-espidf.sh patches a duplicate-source-file bug in ESP-IDF 5.5.4 that
     # causes "Multiple ways to build the same target" errors.  It is idempotent
     # and hands off to the real /entrypoint.sh when done.
@@ -30,6 +32,10 @@ services:
       - /etc/localtime:/etc/localtime:ro
     environment:
       - ESPHOME_VERBOSE=true
+      # ESPHome defaults the ESP-IDF install to the user cache dir (/root/.cache/esphome),
+      # which is not a volume — it is lost on container recreate, and existing build trees
+      # under /config/.esphome/build still reference the old prefix, which breaks CMake.
+      - ESPHOME_ESP_IDF_PREFIX=/config/.esphome/idf
     ports:
       - "8889:6052"
     # privileged: true

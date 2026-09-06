@@ -1,0 +1,139 @@
+# ==============================================================================
+#  STAGE 2 — truma_inetbox protocol debugging (run after lin-sniffer.yaml)
+# ==============================================================================
+# Same LIN wiring as peripherals/truma.yaml, but stripped down to just the Truma
+# stack so nothing else can be blamed: no Wi-Fi, no API, no HA time source, no
+# other peripherals. Flash over USB and read the serial console.
+#
+# Because there is no `time:` here, the component never runs the clock sync, so
+# the "TrumaiNetBoxAppClock: Cannot update Truma" line disappears — that message
+# is a symptom, not the fault. It only means the CP Plus has never registered us,
+# i.e. no usable LIN traffic arrived. What matters is what the LinBusListener logs.
+#
+# How to read the log:
+#   "PID xx  order no answer"         master polled an id we don't serve — bus is FINE
+#   "PID xx  <bytes> ..."             a full frame was decoded — bus is FINE
+#   "Expected BREAK not received"     bytes arrive but never a break: baud/stop-bit
+#                                     mismatch, or RX is picking up noise
+#   "Expected SYNC not found"         break seen but no 0x55: transceiver/level problem
+#   "LIN v1/v2 CRC error"             frames arrive but checksum version is wrong ->
+#                                     flip ${truma_lin_checksum} to VERSION_1
+#   "Fault on LIN BUS detected"       bus stuck dominant (shorted, or TX held low)
+#   nothing at all                    nothing reaches RX -> go back to lin-sniffer.yaml
+#   "Assigned new SID xx"             SUCCESS, the CP Plus registered this node
+#   "Requested read: Sending init"    on a ~20 s loop with no "StatusFrameDevice" after it:
+#                                     the CP Plus has not enumerated us -> run 'PR SET'
+#                                     in the CP Plus settings menu with this node powered up
+
+substitutions:
+  lin_tx_pin: GPIO17
+  lin_rx_pin: GPIO18
+  # VERSION_2 is correct for CP Plus. Try VERSION_1 only if you see v2 CRC errors.
+  truma_lin_checksum: VERSION_2
+  # "true" = never transmit. Start here if you want to be certain the ESP cannot
+  # corrupt the bus; switch to "false" to let the node actually answer the master.
+  truma_observer_mode: "false"
+
+esphome:
+  name: truma-debug
+  friendly_name: Truma Debug
+  on_boot:
+    - priority: -100
+      then:
+        - lambda: |-
+            ESP_LOGI("truma_debug", "==================================================");
+            ESP_LOGI("truma_debug", " Truma protocol debug  TX=%s RX=%s  checksum=%s  observer=%s",
+                     "${lin_tx_pin}", "${lin_rx_pin}", "${truma_lin_checksum}", "${truma_observer_mode}");
+            ESP_LOGI("truma_debug", "==================================================");
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+    version: "6.0.1"
+    sdkconfig_options:
+      CONFIG_BT_ENABLED: "n"
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  # The LIN break/sync diagnostics are ESP_LOGVV, and a tag can never be more
+  # verbose than the global level, so the global level has to be VERY_VERBOSE.
+  # Everything that would drown them out is pushed back down below.
+  level: VERY_VERBOSE
+  hardware_uart: UART0
+  logs:
+    component: WARN
+    scheduler: WARN
+    sensor: INFO
+    binary_sensor: INFO
+    text_sensor: INFO
+    number: INFO
+    select: INFO
+    climate: INFO
+    uart: INFO
+    uart_esp32: INFO
+    truma_inetbox.LinBusListener: VERY_VERBOSE
+    truma_inetbox.LinBusProtocol: VERY_VERBOSE
+    truma_inetbox.TrumaiNetBoxApp: VERY_VERBOSE
+
+external_components:
+  - source:
+      type: git
+      url: https://github.com/havanti/esphome-truma
+      ref: v1.0.24
+    components: ["truma_inetbox", "uart"]
+
+uart:
+  - id: lin_uart_bus
+    tx_pin: ${lin_tx_pin}
+    rx_pin: ${lin_rx_pin}
+    baud_rate: 9600
+    stop_bits: 2
+
+truma_inetbox:
+  id: truma_lin
+  uart_id: lin_uart_bus
+  lin_checksum: ${truma_lin_checksum}
+  observer_mode: ${truma_observer_mode}
+  on_heater_message:
+    - lambda: |-
+        using namespace esphome::truma_inetbox;
+        ESP_LOGI("truma_debug",
+                 "HEATER FRAME: room %.1f -> %.1f, water %.1f -> %.1f, status %s, error %u",
+                 temp_code_to_decimal(message->current_temp_room),
+                 temp_code_to_decimal(message->target_temp_room),
+                 temp_code_to_decimal(message->current_temp_water),
+                 temp_code_to_decimal(message->target_temp_water),
+                 operating_status_to_str(message->operating_status).c_str(),
+                 (unsigned) (message->error_code_high << 8 | message->error_code_low));
+
+interval:
+  - interval: 10s
+    then:
+      - lambda: |-
+          // get_last_cp_plus_request() is a micros() stamp, not millis().
+          const uint32_t last = id(truma_lin).get_last_cp_plus_request();
+          const bool heater_ok = id(truma_lin).get_heater()->get_status_valid();
+          const char *verdict;
+          if (last == 0) {
+            verdict = "no contact from the CP Plus";
+          } else if (!heater_ok) {
+            // The CP Plus polls us and requests our buffer, but never pushes its own
+            // status buffers back until it has enumerated the iNet Box into its device list.
+            verdict = "CP Plus talks to us but sends no status -> run 'PR SET' in the CP Plus settings menu";
+          } else {
+            verdict = "OK";
+          }
+          ESP_LOGI("truma_debug",
+                   "state: last CP Plus contact %.1f s ago, bus_fault=%s, heater_device=%u, heater_status=%s, clock_status=%s -- %s",
+                   last == 0 ? -1.0f : (micros() - last) / 1000000.0f,
+                   YESNO(id(truma_lin).get_lin_bus_fault()),
+                   (unsigned) id(truma_lin).get_heater_device(),
+                   YESNO(heater_ok),
+                   YESNO(id(truma_lin).get_clock()->get_status_valid()),
+                   verdict);

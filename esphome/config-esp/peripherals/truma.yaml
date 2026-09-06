@@ -1,12 +1,18 @@
 # Truma iNetBox over LIN, bridged to UART1 by an external LIN transceiver.
+#
+# Fabian-Schmidt/esphome-truma_inetbox (the original) is effectively unmaintained: open issues
+# asking "is this abandoned?" (#63) go unanswered, and #69/#71 show it doesn't build on
+# current ESPHome without patches. havanti/esphome-truma is an actively maintained fork
+# (releases into 2026.8.x, last commit days old at review time) that folds in exactly the
+# same ESPHome-2026.x UART fix we were carrying locally, plus adds full Climate entities for
+# room/water, Aventa aircon support, energy-mix/fan-mode selects, and a Truma Cooler BLE
+# component. Pinned to a tag (not `main`) for reproducible builds.
 external_components:
-  # Local fork of Fabian-Schmidt/esphome-truma_inetbox, fixed for ESPHome 2026.x
-  # (get_uart_event_queue removed from IDFUARTComponent; we now own the event queue in LinBusListener).
-  # Path is resolved against the main config dir, not this file.
   - source:
-      type: local
-      path: external_components
-    components: ["truma_inetbox"]
+      type: git
+      url: https://github.com/havanti/esphome-truma
+      ref: v1.0.24
+    components: ["truma_inetbox", "uart"]
 
 uart:
   - id: lin_uart_bus
@@ -15,14 +21,102 @@ uart:
     baud_rate: 9600
     stop_bits: 2
 
+# Home Assistant time source, only used to keep the CP Plus RTC correct (resyncs after a
+# fuse pull / power loss without manual intervention). The component performs the first
+# sync itself, 30 s after the CP Plus has finished sending its init data.
+time:
+  - platform: homeassistant
+    id: truma_time
+
 truma_inetbox:
   id: truma_lin
   uart_id: lin_uart_bus
+  time_id: truma_time
+  lin_checksum: VERSION_2
+
+# Hourly resync for drift only. `clock.set` is refused (and logs "Cannot update Truma")
+# until the CP Plus has sent a clock status frame of its own, so gate on exactly that.
+#
+# If "CP Plus alive" stays OFF and the heater sensors never populate, the CP Plus has not
+# enumerated this node as an iNet Box: open the CP Plus settings menu and run "PR SET"
+# once with this node powered and wired. See config-esp/truma-debug.yaml.
+#
+# Writes are not instant: the node can only push a change when the CP Plus next asks for
+# it, so a setpoint change takes up to ~40 s to be echoed back.
+interval:
+  - interval: 1h
+    then:
+      - if:
+          condition:
+            lambda: 'return id(truma_lin).get_clock()->get_status_valid();'
+          then:
+            - truma_inetbox.clock.set:
+  - interval: 15s
+    then:
+      - lambda: |-
+          if (id(report_fault)) {
+            id(report_fault)("LIN UART", id(lin_uart_bus));
+            id(report_fault)("Truma", id(truma_lin));
+          }
 
 binary_sensor:
   - platform: truma_inetbox
     name: "CP Plus alive"
     type: CP_PLUS_CONNECTED
+  - platform: truma_inetbox
+    name: "Heater Has Error"
+    type: HEATER_HAS_ERROR
+  - platform: truma_inetbox
+    name: "Room Heater Active"
+    type: HEATER_ROOM
+  - platform: truma_inetbox
+    name: "Water Heater Active"
+    type: HEATER_WATER
+  - platform: truma_inetbox
+    name: "Heater Mode Gas"
+    type: HEATER_GAS
+  - platform: truma_inetbox
+    name: "Heater Mode Mix 1"
+    type: HEATER_MIX_1
+  - platform: truma_inetbox
+    name: "Heater Mode Mix 2"
+    type: HEATER_MIX_2
+  - platform: truma_inetbox
+    name: "Heater Mode Electric"
+    type: HEATER_ELECTRICITY
+  - platform: truma_inetbox
+    name: "Timer Active"
+    type: TIMER_ACTIVE
+  - platform: truma_inetbox
+    name: "Timer Room Heater Active"
+    type: TIMER_ROOM
+  - platform: truma_inetbox
+    name: "Timer Water Heater Active"
+    type: TIMER_WATER
+
+# Room heating and water heating exposed as full HA climate entities (set point + mode).
+climate:
+  - platform: truma_inetbox
+    name: "Truma Room"
+    type: ROOM
+  - platform: truma_inetbox
+    name: "Truma Water"
+    type: WATER
+
+# Fan speed ("vent") and gas/electric/mix energy source, settable from HA.
+select:
+  - platform: truma_inetbox
+    name: "Fan Mode"
+    type: HEATER_FAN_MODE_COMBI
+  - platform: truma_inetbox
+    name: "Energy Mix"
+    type: HEATER_ENERGY_MIX_GAS
+
+# Electric power level (0/900/1800 W) for 4E/6E hybrid models; harmless no-op on gas-only units.
+number:
+  - platform: truma_inetbox
+    name: "Electric Power Level"
+    type: ELECTRIC_POWER_LEVEL
 
 sensor:
   - platform: truma_inetbox
@@ -37,12 +131,19 @@ sensor:
   - platform: truma_inetbox
     name: "Target Water Temperature"
     type: TARGET_WATER_TEMPERATURE
+  - platform: truma_inetbox
+    name: "Heating Mode"
+    type: HEATING_MODE
+  - platform: truma_inetbox
+    name: "Energy Mix Status"
+    type: ENERGY_MIX
+  - platform: truma_inetbox
+    name: "Operating Status"
+    type: OPERATING_STATUS
+  - platform: truma_inetbox
+    name: "Heater Error Code"
+    type: HEATER_ERROR_CODE
 
-interval:
-  - interval: 15s
-    then:
-      - lambda: |-
-          if (id(report_fault)) {
-            id(report_fault)("LIN UART", id(lin_uart_bus));
-            id(report_fault)("Truma", id(truma_lin));
-          }
+text_sensor:
+  - platform: truma_inetbox
+    name: "ESPHome Truma Version"

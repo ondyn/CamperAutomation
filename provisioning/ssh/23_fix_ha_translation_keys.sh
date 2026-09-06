@@ -20,6 +20,10 @@ set -euo pipefail
 #   to avoid blocking-I/O-in-event-loop warnings.
 #
 # Must be re-applied after every `pip install --upgrade homeassistant`.
+# provisioning/ssh/10_install_homeassistant_core.sh now applies this patch
+# automatically on every (re)install, so this script is mainly a standalone
+# repair tool for an already-running install (e.g. right after a manual
+# `pip install --upgrade homeassistant` outside the provisioning flow).
 #
 # Usage:
 #   ./provisioning/ssh/23_fix_ha_translation_keys.sh        # auto-detect via ADB
@@ -29,7 +33,7 @@ set -euo pipefail
 #   SKIP_RESTART=1   — skip HA restart after applying patch
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PATCH_SCRIPT="${ROOT_DIR}/provisioning/ssh/23_fix_ha_translation_keys.py"
+PATCH_SCRIPT="${ROOT_DIR}/provisioning/ssh/ha_translation_patch.py"
 
 # ── Auto-detect PHONE_HOST ────────────────────────────────────────────────────
 if [ -z "${PHONE_HOST:-}" ]; then
@@ -45,160 +49,15 @@ HA_VENV="/data/data/com.termux/files/home/.venv"
 HA_TRANS="${HA_VENV}/lib/python3.13/site-packages/homeassistant/helpers/translation.py"
 STAGE="/data/local/tmp/ha_translation_patched.py"
 
-# ── Write the Python patch script locally ────────────────────────────────────
-cat > /tmp/ha_translation_patch.py << 'PYEOF'
-"""Patch homeassistant/helpers/translation.py.
-Applies [%key:X::Y::Z%] resolver at cache-build time using strings.json.
-"""
-import sys
-
-src_path = sys.argv[1]
-with open(src_path, "r") as f:
-    content = f.read()
-
-is_upgrade = False
-
-if "_resolve_key_refs" in content:
-    if "# v5: import-time-component-references" in content:
-        print("SKIP: patch v5 already applied.")
-        sys.exit(0)
-    print("Upgrading patch to v5 (import-time component references)...")
-    is_upgrade = True
-
-if "_resolve_key_refs" in content:
-    print("Updating existing patch (adding import-time load fix)...")
-    # Remove old resolver block and replace with v3
-    import re as _re
-    old_block = _re.search(
-        r"# ---- Android/Termux pip-install fix.*?# ---- End fix -{3,}\n\n",
-        content,
-        _re.DOTALL,
-    )
-    if old_block:
-        content = content[: old_block.start()] + content[old_block.end() :]
-    # Also remove import re added by old patch if not in original
-    # (we'll re-add it below)
-
-# 1. Add 'import re' if not present
-if "\nimport re\n" not in content:
-    content = content.replace(
-        "import string\nfrom typing import Any",
-        "import re\nimport string\nfrom typing import Any",
-        1,
-    )
-
-# 2. Resolver block (injected before _load_translations_files_by_language)
-RESOLVER = '''
-# ---- Android/Termux pip-install fix ----------------------------------------
-# HA pip packages ship translation files with unresolved [%key:X::Y::Z%] refs.
-# HA release builds resolve these; plain pip installs do not, so the frontend
-# shows raw keys like "[%key:common::state::off%]" instead of "Off".
-# Resolved here at cache-build time via component translation files.
-_KEY_RE = re.compile(r"\\[%key:([^%]+)%\\]")
-
-
-def _load_component_reference_strings() -> dict[str, str]:
-    """Load component strings for resolving references across cache categories."""
-    try:
-        import json as _json
-        _components = pathlib.Path(__file__).parent.parent / "components"
-        references: dict[str, str] = {}
-        for component_dir in _components.iterdir():
-            if not component_dir.is_dir():
-                continue
-            source = component_dir / "strings.json"
-            if not source.is_file():
-                continue
-            raw = _json.loads(source.read_bytes().decode("utf-8"))
-            references.update(
-                recursive_flatten(f"component.{component_dir.name}.", raw)
-            )
-        return references
-    except Exception:  # noqa: BLE001
-        return {}
-
-
-# Loaded once at import time — before the async event loop starts.
-_COMPONENT_REFERENCE_STRINGS: dict[str, str] = _load_component_reference_strings()
-
-
-def _resolve_key_refs(flat: dict[str, str]) -> dict[str, str]:
-    """Replace [%key:X::Y::Z%] refs with human-readable strings.
-
-    # v5: import-time-component-references
-
-    Resolution order:
-    1. Direct lookup in the category currently being built.
-    2. Lookup in the bundled component source strings.
-    """
-
-    def _resolve(v: str, depth: int = 0) -> str:
-        if depth > 3 or not isinstance(v, str) or not _KEY_RE.fullmatch(v):
-            return v
-        lookup = v[6:-2].replace("::", ".")
-        if lookup in flat:
-            return _resolve(flat[lookup], depth + 1)
-        return _resolve(_COMPONENT_REFERENCE_STRINGS.get(lookup, v), depth + 1)
-
-    return {k: _resolve(v) for k, v in flat.items()}
-
-# ---- End fix ---------------------------------------------------------------
-
-'''
-
-if "\ndef _load_translations_files_by_language(" not in content:
-    print("ERROR: insertion point not found in translation.py", file=sys.stderr)
-    sys.exit(1)
-content = content.replace(
-    "\ndef _load_translations_files_by_language(",
-    RESOLVER + "\ndef _load_translations_files_by_language(",
-    1,
-)
-
-# 3. Call _resolve_key_refs after recursive_flatten in _build_category_cache
-if not is_upgrade:
-    MARKER = (
-        "                flat = recursive_flatten(prefix, resource)\n"
-        "                flat = self._validate_placeholders(language, flat, component_cache)"
-    )
-    REPLACEMENT = (
-        "                flat = recursive_flatten(prefix, resource)\n"
-        "                flat = _resolve_key_refs(flat)\n"
-        "                flat = self._validate_placeholders(language, flat, component_cache)"
-    )
-    if MARKER not in content:
-        print("ERROR: _build_category_cache marker not found", file=sys.stderr)
-        sys.exit(1)
-    content = content.replace(MARKER, REPLACEMENT, 1)
-else:
-    OLD_CALL = "                flat = _resolve_key_refs(language, flat)"
-    NEW_CALL = "                flat = _resolve_key_refs(flat)"
-    if OLD_CALL not in content:
-        print("ERROR: existing _resolve_key_refs call not found", file=sys.stderr)
-        sys.exit(1)
-    content = content.replace(OLD_CALL, NEW_CALL, 1)
-
-# Verify
-assert "_resolve_key_refs(flat)" in content
-assert "_COMPONENT_REFERENCE_STRINGS" in content
-assert "_load_component_reference_strings" in content
-
-with open(src_path, "w") as f:
-    f.write(content)
-print(f"Patched: {src_path}")
-PYEOF
-
+# ── Apply the shared patch script ─────────────────────────────────────────────
 echo "Applying translation.py patch..."
 
 # Stage the patch where the Termux app can read it, then run it as Termux.
 # Android's root SELinux context cannot reliably access Termux private storage.
-adb push /tmp/ha_translation_patch.py "${STAGE}" >/dev/null
+adb push "${PATCH_SCRIPT}" "${STAGE}" >/dev/null
 adb shell "run-as com.termux /data/data/com.termux/files/usr/bin/sh -c 'backup_dir=/data/data/com.termux/files/home/.cache/provisioning; mkdir -p \"\$backup_dir\" && cp ${HA_TRANS} \"\$backup_dir/translation.py.$(date +%Y%m%d-%H%M%S).bak\" && /data/data/com.termux/files/home/.venv/bin/python ${STAGE} ${HA_TRANS}'"
 adb shell "rm -f ${STAGE}"
 echo "translation.py patched on device."
-
-# Clean up temp files
-rm -f /tmp/ha_translation_patch.py
 
 # ── Restart HA ────────────────────────────────────────────────────────────────
 if [ "${SKIP_RESTART:-0}" = "1" ]; then

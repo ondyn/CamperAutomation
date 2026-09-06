@@ -1,0 +1,147 @@
+# ==============================================================================
+#  STAGE 1 — raw LIN wire sniffer (no truma_inetbox component at all)
+# ==============================================================================
+# Purpose: answer the three questions that come before "why doesn't Truma work?"
+#
+#   1. Is anything at all arriving on the RX pin?   -> "<<<" lines below
+#   2. Does it look like LIN?                       -> frames starting 00 55 <PID>
+#   3. Does TX reach the bus and come back?         -> the loopback probe
+#
+# Nothing here talks LIN protocol, so it cannot disturb the CP Plus master: the
+# UART is read-only until the bus has been silent for 10 s, at which point a
+# single probe byte is sent (a silent bus has nothing to collide with).
+#
+# Flash over USB and watch the serial console — this node has no Wi-Fi on purpose,
+# so radio/hotspot problems cannot mask a wiring problem.
+#
+# See docs/hardware/esp32s3-wiring-guide.md "Feature 2" for the transceiver wiring.
+
+substitutions:
+  # Swap these two if stage 1 shows no RX at all — some LIN breakout boards label
+  # TXD/RXD from the module's point of view instead of the MCU's.
+  lin_tx_pin: GPIO17
+  lin_rx_pin: GPIO18
+
+esphome:
+  name: lin-sniffer
+  friendly_name: LIN Sniffer
+  on_boot:
+    - priority: -100
+      then:
+        - lambda: |-
+            ESP_LOGI("lin", "==================================================");
+            ESP_LOGI("lin", " LIN raw sniffer  TX=%s  RX=%s  9600 8N2", "${lin_tx_pin}", "${lin_rx_pin}");
+            ESP_LOGI("lin", " '<<<' = bytes read from the bus, '>>>' = bytes we sent");
+            ESP_LOGI("lin", " A healthy Truma bus shows frames like: 00 55 <PID> ...");
+            ESP_LOGI("lin", "==================================================");
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  flash_size: 16MB
+  framework:
+    type: esp-idf
+    version: "6.0.1"
+    sdkconfig_options:
+      CONFIG_BT_ENABLED: "n"
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  level: DEBUG
+  hardware_uart: UART0  # CH343 "UART" port, not the native-USB port
+
+globals:
+  - id: rx_bytes
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: tx_bytes
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: lin_frames
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  # RX chunks that did not start with a BREAK+SYNC pair: framing/baud/polarity smell.
+  - id: rx_unframed
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: rx_bytes_at_last_probe
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+  - id: pids_seen
+    type: std::vector<uint8_t>
+    restore_value: no
+
+uart:
+  - id: lin_uart_bus
+    tx_pin: ${lin_tx_pin}
+    rx_pin: ${lin_rx_pin}
+    baud_rate: 9600
+    stop_bits: 2
+    rx_buffer_size: 1024
+    debug:
+      direction: BOTH
+      # Nothing else reads this UART, so the debugger has to drain it itself.
+      dummy_receiver: true
+      after:
+        bytes: 32
+        # ~1.15 ms per byte at 9600 8N2, so a 6 ms gap means "end of LIN frame".
+        timeout: 6ms
+      sequence:
+        - lambda: |-
+            const bool is_rx = direction == esphome::uart::UART_DIRECTION_RX;
+            if (is_rx) {
+              id(rx_bytes) += bytes.size();
+              // A LIN break is 13 dominant bits; without break detection it lands
+              // in the FIFO as 0x00, followed by the 0x55 sync field.
+              if (bytes.size() >= 3 && bytes[0] == 0x00 && bytes[1] == 0x55) {
+                id(lin_frames)++;
+                const uint8_t pid = bytes[2] & 0x3F;
+                bool known = false;
+                for (auto p : id(pids_seen)) {
+                  if (p == pid) { known = true; break; }
+                }
+                if (!known && id(pids_seen).size() < 64) {
+                  id(pids_seen).push_back(pid);
+                  ESP_LOGI("lin", "new frame id 0x%02X (PID byte 0x%02X)", pid, bytes[2]);
+                }
+              } else {
+                id(rx_unframed)++;
+              }
+            } else {
+              id(tx_bytes) += bytes.size();
+            }
+            ESP_LOGD("lin", "%s %s", is_rx ? "<<<" : ">>>",
+                     esphome::format_hex_pretty(bytes).c_str());
+
+interval:
+  - interval: 10s
+    then:
+      - lambda: |-
+          std::string pids;
+          for (auto p : id(pids_seen)) {
+            char buf[6];
+            sprintf(buf, "%02X ", p);
+            pids += buf;
+          }
+          if (pids.empty()) pids = "(none)";
+          ESP_LOGI("lin", "totals: rx=%u B, lin_frames=%u, unframed_chunks=%u, tx=%u B, ids: %s",
+                   id(rx_bytes), id(lin_frames), id(rx_unframed), id(tx_bytes), pids.c_str());
+
+          if (id(rx_bytes) == id(rx_bytes_at_last_probe)) {
+            // Bus has been silent for a full window. A LIN transceiver echoes whatever
+            // it drives onto the bus back on RXD, so a byte that comes straight back
+            // proves VBAT, EN/CS and both signal wires. Nothing back = dead transceiver,
+            // missing 12 V, or TX/RX swapped.
+            ESP_LOGW("lin", "bus silent for 10 s -- sending 0x55 loopback probe");
+            id(lin_uart_bus).write_byte(0x55);
+            id(lin_uart_bus).flush();
+          }
+          id(rx_bytes_at_last_probe) = id(rx_bytes);
