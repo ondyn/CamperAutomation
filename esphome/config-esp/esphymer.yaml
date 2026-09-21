@@ -11,6 +11,8 @@ packages:
   temperature:   !include peripherals/temperature_dallas.yaml
   # bme280:        !include peripherals/bme280.yaml
   truma:         !include peripherals/truma.yaml
+  # truma:       !include peripherals/truma_cpplus_lowlatency_diag.yaml
+  # truma:       !include peripherals/truma_commander_experimental.yaml
   pir:           !include peripherals/pir.yaml
   phone_charger: !include peripherals/phone_charger.yaml
   # battery:       !include peripherals/battery_ina219.yaml

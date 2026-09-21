@@ -1,0 +1,45 @@
+# Optional profile: commander-mode research scaffold.
+#
+# IMPORTANT
+# - This does not make ESP a LIN commander for Truma yet.
+# - It keeps the stable truma_inetbox stack and adds explicit diagnostics that
+#   explain why CP Plus is still required with current component code.
+# - Keep this profile opt-in and experimental.
+#
+# Why this exists:
+# - TJA1021 hardware supports commander-capable transceiver wiring,
+#   but software still needs a full LIN scheduler/master implementation
+#   (break generation, frame schedule, NAD/addressing/init sequencing,
+#   device discovery, retries, and safety fallback logic).
+# - Upstream truma_inetbox currently behaves as iNet-box-like slave.
+
+packages:
+  truma_diag: !include truma_cpplus_lowlatency_diag.yaml
+
+text_sensor:
+  - platform: template
+    name: "Truma Commander Status"
+    entity_category: diagnostic
+    icon: "mdi:beaker-alert"
+    update_interval: 30s
+    lambda: |-
+      return {"experimental: commander mode not implemented in component"};
+
+  - platform: template
+    name: "Truma Commander Next Step"
+    entity_category: diagnostic
+    icon: "mdi:hammer-wrench"
+    update_interval: 30s
+    lambda: |-
+      return {"requires custom LIN master scheduler + Truma init sequence"};
+
+interval:
+  - interval: 20s
+    then:
+      - if:
+          condition:
+            lambda: 'return id(truma_lin).get_last_cp_plus_request() == 0;'
+          then:
+            - logger.log:
+                level: WARN
+                format: "Commander profile selected: without CP Plus traffic, current truma_inetbox cannot initialize/control heater."

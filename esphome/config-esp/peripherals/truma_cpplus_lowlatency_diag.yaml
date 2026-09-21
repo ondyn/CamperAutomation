@@ -1,0 +1,48 @@
+# Optional profile: keep the proven CP Plus slave architecture, but expose
+# timing diagnostics so command latency can be measured in HA.
+#
+# This DOES NOT bypass CP Plus polling. The Truma write path is still:
+#   HA action -> queue update in ESP -> CP Plus next poll -> Truma apply + ACK
+#
+# Use this profile when you want observability of the poll cadence and
+# command-window timing without touching the stable base package.
+
+packages:
+  truma_base: !include truma.yaml
+
+sensor:
+  - platform: template
+    name: "Truma CP Plus Poll Age"
+    id: truma_cpplus_poll_age_s
+    unit_of_measurement: "s"
+    accuracy_decimals: 1
+    icon: "mdi:timer-sand"
+    state_class: measurement
+    update_interval: 1s
+    lambda: |-
+      const uint32_t last = id(truma_lin).get_last_cp_plus_request();
+      if (last == 0) {
+        return NAN;
+      }
+      return (micros() - last) / 1000000.0f;
+
+binary_sensor:
+  - platform: template
+    name: "Truma Poll Fresh"
+    device_class: connectivity
+    entity_category: diagnostic
+    lambda: |-
+      const uint32_t last = id(truma_lin).get_last_cp_plus_request();
+      if (last == 0) {
+        return false;
+      }
+      return (micros() - last) < 1500000UL;
+
+text_sensor:
+  - platform: template
+    name: "Truma Command Path"
+    entity_category: diagnostic
+    icon: "mdi:timeline-clock"
+    update_interval: 60s
+    lambda: |-
+      return {"cp-plus-master / esp-slave (poll-driven)"};
