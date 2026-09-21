@@ -1,0 +1,161 @@
+# ===========================================================================
+# nRF24L01 2.4 GHz band scanner
+#
+# Purpose: prove, or rule out, that the roof-vent remote transmits somewhere in
+# the 2.4 GHz ISM band.  Standalone diagnostic node - deliberately no Wi-Fi, no
+# API, no OTA, so the ESP's own radio cannot pollute the measurement.  Read the
+# results over USB serial:
+#     docker exec -it esphome-esphome-1 esphome logs /config/nrf24-sniffer.yaml
+# or flash and watch the serial port directly (see docs in esphome-hardware notes).
+#
+# ---------------------------------------------------------------------------
+# RF test status for this vent (updated 2026-09-21)
+# (background: docs/architecture/vent-rf-integration.md)
+# ---------------------------------------------------------------------------
+#   * 433.92 MHz OOK was the first hypothesis, based on the vent's pairing
+#     procedure. Pairing behaviour alone does not prove EV1527 or the frequency.
+#   * config-esp/vent-sniffer.yaml: ESP32-C3 + MX-RM-5V superregenerative
+#     receiver on GPIO4 behind a 10k/20k divider, remote_receiver with
+#     dump: rc_switch, tolerance 50%, idle 4 ms.  Pronto kept matching plain
+#     band noise; rc_switch never produced a repeatable code for any button.
+#   * config-esp/rf-test-tx.yaml + rf-test-rx.yaml: a deliberate loopback pair.
+#     The TX node sends a known 24-bit EV1527 frame (0xAAAAnn) every 5 s so the
+#     RX node can be validated independently.  This separates "our 433 MHz rig
+#     is broken" from "the remote is not 433 MHz OOK".
+#   * 315 MHz was also tested without repeatable remote-correlated activity.
+#   * This 2.4 GHz scanner was tested over repeated marked button windows; no
+#     activity distinguishable from the Wi-Fi/BLE baseline was observed.
+#
+#   -> 433 MHz, 315 MHz and 2.4 GHz are negative. The next test is 868 MHz with
+#      an RTL-SDR waterfall (preferred) or an 868/915 MHz CC1101 RSSI scanner.
+#      See docs/architecture/vent-rf-integration.md for the procedure.
+#
+# ---------------------------------------------------------------------------
+# Wiring: nRF24L01(+) module -> ESP32-C3 mini
+# ---------------------------------------------------------------------------
+# The module carries a 2x4 pin header.  Hold it component-side up with the
+# antenna (PCB trace or SMA connector) pointing away from you; the header is
+# then nearest to you and pin 1 is the bottom-left pin:
+#
+#        +------+------+
+#   GND  |  1   |  2   |  VCC
+#   CE   |  3   |  4   |  CSN
+#   SCK  |  5   |  6   |  MOSI
+#   MISO |  7   |  8   |  IRQ
+#        +------+------+
+#
+#   nRF24 pin        ESP32-C3 mini pin   note
+#   --------------   -----------------   ------------------------------------
+#   1  GND       ->  GND
+#   2  VCC       ->  3V3                 3.3 V ONLY.  5 V destroys the chip.
+#   3  CE        ->  GPIO3
+#   4  CSN       ->  GPIO7
+#   5  SCK       ->  GPIO4
+#   6  MOSI      ->  GPIO6
+#   7  MISO      ->  GPIO5
+#   8  IRQ       ->  leave unconnected
+#
+# MANDATORY: solder a 10 uF (4.7-100 uF is fine) electrolytic or tantalum cap
+# directly across pins 1 and 2 at the module header, ideally with a 100 nF in
+# parallel.  The nRF24 draws short current spikes the C3's 3V3 regulator cannot
+# follow over breadboard wires; without the cap the module either never answers
+# on SPI or reports random data.  This is by far the most common failure.
+#
+# Keep the SPI wires short (< 15 cm).  PA+LNA variants draw far more current -
+# feed those from a separate 3.3 V LDO, not from the C3's 3V3 pin.
+#
+# Signal logic is 5 V tolerant on the inputs, so no dividers are needed here.
+#
+# ---------------------------------------------------------------------------
+# How to run the test
+# ---------------------------------------------------------------------------
+# 1. Power the node over USB and open the logs.  If you see "nRF24 not
+#    responding", stop and fix the wiring/cap - every later result is garbage.
+# 2. Let it print two or three "idle window" reports with the remote untouched.
+#    This is your baseline.  Nearby Wi-Fi and BLE WILL show up: Wi-Fi occupies
+#    wide ~22 MHz blobs (ch 1/6/11 centre on nRF ch 12 / 37 / 62) and BLE
+#    advertising sits on nRF ch 2, 26 and 80.  Moving away from the phone
+#    hotspot makes the picture much cleaner.
+# 3. Hold the remote 5-15 cm from the module antenna - the RPD threshold is
+#    about -64 dBm, so it only sees strong, close signals.
+# 4. Hold the onboard BOOT button (GPIO9) and repeatedly press remote buttons.
+#    Reports for those windows are tagged "BUTTON HELD" and additionally try a
+#    raw packet capture on the busiest channel.
+# 5. Compare. A new narrow spike (one to three adjacent channels) that appears
+#    only in BUTTON HELD windows indicates a 2.4 GHz transmitter. This vent did
+#    not produce one; the retained scanner can reproduce or verify that result.
+#
+# NOTE: GPIO9 is a strapping pin.  Do not hold BOOT while powering up or the
+# chip enters download mode instead of booting.
+# ===========================================================================
+
+substitutions:
+  devicename: nrf24-sniffer
+  friendly_name: nRF24 Sniffer
+
+  pin_ce: "3"
+  pin_csn: "7"
+  pin_sck: "4"
+  pin_miso: "5"
+  pin_mosi: "6"
+  pin_led: "8"
+  pin_mark: "9"
+
+esphome:
+  name: ${devicename}
+  friendly_name: ${friendly_name}
+  comment: Offline nRF24L01 2.4 GHz scanner for vent remote detection
+  includes:
+    - nrf24_scanner.h
+  on_boot:
+    priority: -100
+    then:
+      - lambda: 'nrf24::begin(${pin_sck}, ${pin_miso}, ${pin_mosi}, ${pin_csn}, ${pin_ce});'
+
+esp32:
+  board: lolin_c3_mini
+  framework:
+    type: esp-idf
+    version: "6.0.1"
+
+logger:
+  level: INFO
+
+binary_sensor:
+  # Onboard BOOT button, used to tag "I am pressing the remote right now" windows.
+  - platform: gpio
+    id: mark_btn
+    internal: true
+    pin:
+      number: GPIO${pin_mark}
+      mode:
+        input: true
+        pullup: true
+      inverted: true
+
+output:
+  - platform: gpio
+    pin:
+      number: GPIO${pin_led}
+      inverted: true
+    id: led_output
+
+interval:
+  # 32 channels per pass is ~7 ms of radio time, which keeps the ESPHome loop responsive.
+  - interval: 10ms
+    then:
+      - lambda: 'nrf24::scan(32);'
+
+  - interval: 5s
+    then:
+      - lambda: |-
+          const uint8_t busiest = nrf24::report(id(mark_btn).state);
+          if (id(mark_btn).state && busiest != 0xFF)
+            nrf24::sniff(busiest, 25);
+
+  - interval: 1s
+    then:
+      # Heartbeat: confirms the firmware is alive without any network stack.
+      - output.turn_on: led_output
+      - delay: 40ms
+      - output.turn_off: led_output

@@ -1,0 +1,35 @@
+# 12V supply, mains (230V) and engine D+ presence indicators, each detected via an
+# optocoupler that pulls its ESP GPIO HIGH when the respective signal is present.
+# Internal pull-downs keep an unpowered/disconnected opto reading a clean LOW (absent).
+binary_sensor:
+  - platform: gpio
+    id: supply_12v_present
+    name: "12V Supply Present"
+    device_class: power
+    pin:
+      number: GPIO2
+      mode:
+        input: true
+        pulldown: true
+
+  - platform: gpio
+    id: mains_230v_present
+    name: "Mains 230V Connected"
+    device_class: plug
+    pin:
+      number: GPIO6
+      mode:
+        input: true
+        pulldown: true
+
+  # Alternator D+ terminal: energised only once the engine runs and the alternator
+  # charges, so this is an "engine running" signal, not just "ignition on".
+  - platform: gpio
+    id: engine_running
+    name: "Engine Running (D+)"
+    device_class: running
+    pin:
+      number: GPIO20
+      mode:
+        input: true
+        pulldown: true

@@ -9,6 +9,11 @@ Power rails: **5 V** (USB / VIN pin), **3.3 V** (onboard LDO), **GND**
 > pigtail attached the radio scans and finds **zero** networks — it does not fall back to
 > a chip antenna.
 
+> Pin assignments below are cross-checked against Espressif's official ESP32-S3-DevKitC-1
+> schematic (`02_ESP32-S3-DevKitC-1` sheet) and pinout diagram: J1/J3 headers expose
+> GPIO0–21, 35–48 only — **GPIO22–25 do not exist on the chip**, and GPIO26–34 are wired
+> internally to the module's flash/PSRAM only, never brought to a header pin.
+
 ---
 
 ## Reserved / Do-Not-Use Pins
@@ -55,8 +60,20 @@ Usable, unconstrained: **GPIO1–18, 21, 39–42, 47** (plus whichever of 38/48 
 | GPIO43 | OUT    | Console TX (logger)            | CH343 bridge                        | Reserved                                     |
 | GPIO44 | IN     | Console RX                     | CH343 bridge                        | Reserved                                     |
 
-**Free for expansion:** GPIO1, 2, 6, 7 (all ADC1 — kept free for analog inputs),
-GPIO47, and GPIO38 (if the RGB LED is on 48).
+**Free for expansion:** none. GPIO1, 2, 6, 7 (former ADC1-reserved pins), GPIO47, GPIO38
+(RGB LED alternate, free while the LED is on 48), and both native-USB pins GPIO19/20 are
+now all assigned below.
+
+| GPIO   | Dir    | Function                       | Peripheral                          | Notes                                        |
+|--------|--------|---------------------------------|--------------------------------------|----------------------------------------------|
+| GPIO1  | IN     | Gas bottle primary/secondary    | Mechanical switch to GND             | Internal pull-up; LOW = primary/interconnected |
+| GPIO2  | IN     | 12V supply present              | Optocoupler                          | Internal pull-down                           |
+| GPIO6  | IN     | Mains 230V connected            | Optocoupler (12 V signal)            | Internal pull-down                           |
+| GPIO7  | OUT    | Gas valve heater                | N-MOS + optocoupler                  | Fail-safe OFF at reset                       |
+| GPIO19 | OUT    | EBL30 "turn OFF" pulse (A12)    | N-MOS + optocoupler                  | Native-USB D-, repurposed — see caveat below |
+| GPIO20 | IN     | Engine running (alternator D+)  | Optocoupler                          | Native-USB D+, repurposed; internal pull-down |
+| GPIO38 | OUT    | EBL30 "turn ON" pulse (A11)     | N-MOS + optocoupler                  | Free only while status LED is on GPIO48      |
+| GPIO47 | OUT    | Water pump enable               | N-MOS + optocoupler, active-low      | `inverted: true`, fail-safe OFF at reset     |
 
 ### Why this distribution
 
@@ -363,6 +380,38 @@ GPIO5 ───────────────────── AO    (ana
 
 > Power the plate from 3.3 V, not 5 V — the ESP32-S3 ADC tops out around 3.1 V even at
 > 12 dB attenuation, and the GPIOs are not 5 V tolerant.
+
+---
+
+## Feature 9b — EBL30 12V Power Toggle, Gas System, Power Presence, Water Pump
+
+These four peripherals (`peripherals/ebl30_power.yaml`, `gas_system.yaml`, `power_status.yaml`,
+`water_pump.yaml`) all drive or read a single N-MOS/optocoupler stage per signal — no
+special wiring beyond the GPIO, 3.3 V logic side, and shared GND.
+
+- **EBL30 power toggle** (GPIO38 = A11 "on" pulse, GPIO19 = A12 "off" pulse): the
+  electroblock's own lines are normally pulled up to 12 V and triggered by a LOW pulse.
+  ESP GPIO HIGH turns the opto/MOS on, which pulls the EBL30 line LOW for ~200 ms. Home
+  Assistant only sees one toggle entity; the two physical lines are never pulsed
+  together, and a `script: mode: queued` enforces the >=500 ms minimum gap between
+  commands.
+  > GPIO19 is the native-USB D- pin. It is free to reuse because this board's console
+  > and flashing already run over the external CH343 UART bridge (GPIO43/44), not the
+  > chip's native USB peripheral. Expect (and ignore) an ESPHome compile-time warning
+  > "GPIO19 conflicts with USB-Serial-JTAG".
+- **Gas bottle source** (GPIO1): plain switch to GND, closed when bottles are
+  interconnected (primary). Internal pull-up; open = secondary.
+- **Gas valve heater** (GPIO7): plain on/off N-MOS switch, fail-safe OFF at reset.
+- **12V supply present** (GPIO2) / **mains 230V connected** (GPIO6): each an
+  optocoupler pulling its GPIO HIGH when the respective supply is live; internal
+  pull-downs so a disconnected opto reads a clean LOW.
+- **Engine running / D+** (GPIO20): optocoupler on the alternator's D+ terminal, which
+  only energises once the engine is running and the alternator is charging — a firmer
+  signal than "ignition on". `device_class: running`. Same native-USB-pin caveat as
+  GPIO19 applies (expect an ESPHome "GPIO20 conflicts with USB-Serial-JTAG" warning).
+- **Water pump enable** (GPIO47): same active-low N-MOS drive style as the EBL30
+  lines — `inverted: true` so Home Assistant's on/off matches the physical LOW-active
+  trigger. Fail-safe OFF at reset.
 
 ---
 

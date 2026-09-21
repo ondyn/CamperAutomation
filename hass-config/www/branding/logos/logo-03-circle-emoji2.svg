@@ -5,7 +5,7 @@
    aria-label="Camper automation logo variant 3"
    version="1.1"
    id="svg5"
-   sodipodi:docname="logo-03-circle-emoji.dxf"
+   sodipodi:docname="logo-03-circle-emoji2.svg"
    inkscape:version="1.4.4 (dcaf3e7, 2026-05-05)"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
@@ -25,7 +25,7 @@
      inkscape:zoom="1.2491241"
      inkscape:cx="264.5854"
      inkscape:cy="271.39017"
-     inkscape:current-layer="svg5" />
+     inkscape:current-layer="g4" />
   <path
      id="circle1-7"
      style="fill:#0b1f33"
@@ -49,10 +49,6 @@
        style="baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;fill:#0b1f33;stroke:none;stroke-linecap:butt;stroke-linejoin:miter;enable-background:accumulate;stop-color:#000000;stop-opacity:1;opacity:1"
        d="m 289.57617,143.00977 a 9.0009,9.0009 0 0 0 -6.50976,3.25195 l -41.69532,50.38281 -31.00781,-31.00781 a 9.0009,9.0009 0 0 0 -12.72656,0 l -42,42 a 9,9 0 0 0 0,12.72656 9,9 0 0 0 12.72656,0 L 204,184.72656 l 31.63672,31.63672 a 9.0009,9.0009 0 0 0 13.29687,-0.625 l 41.69532,-50.38281 47.00781,47.00781 a 9,9 0 0 0 12.72656,0 9,9 0 0 0 0,-12.72656 l -54,-54 a 9.0009,9.0009 0 0 0 -6.78711,-2.62695 z"
        id="path3" />
-    <path
-       style="baseline-shift:baseline;display:inline;overflow:visible;vector-effect:none;fill:#0b1f33;stroke:none;stroke-linecap:butt;stroke-linejoin:miter;enable-background:accumulate;stop-color:#000000;stop-opacity:1;opacity:1"
-       d="m 206,311 a 9,9 0 0 0 -9,9 9,9 0 0 0 9,9 h 100 a 9,9 0 0 0 9,-9 9,9 0 0 0 -9,-9 z"
-       id="path4" />
     <g
        fill="#f4a300"
        id="g6"

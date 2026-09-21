@@ -18,6 +18,22 @@ packages:
   # VL6180X pulls a third-party component from GitHub at build time — off until wired.
   # range:       !include peripherals/range_vl6180x.yaml
 
+  # EBL30 electroblock 12V power toggle: GPIO38 = "turn ON" pulse line (A11),
+  # GPIO19 = "turn OFF" pulse line (A12, repurposed native-USB D- pin — this board
+  # flashes/logs over the CH343 UART bridge, not native USB).
+  ebl30_power:   !include peripherals/ebl30_power.yaml
+
+  # Gas bottle primary/secondary switch (GPIO1, input) + gas valve heater (GPIO7, output).
+  gas_system:    !include peripherals/gas_system.yaml
+
+  # 12V supply present (GPIO2, input), mains 230V connected (GPIO6, input), and car D+
+  # engine-running (GPIO20, input, repurposed native-USB D+ pin — see wiring guide),
+  # all via optocoupler.
+  power_status:  !include peripherals/power_status.yaml
+
+  # Water pump enable, active-low N-MOS drive (GPIO47, output).
+  water_pump:    !include peripherals/water_pump.yaml
+
   fresh_water: !include
     file: peripherals/water_tank.yaml
     vars:

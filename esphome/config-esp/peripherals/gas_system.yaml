@@ -1,0 +1,24 @@
+# Gas bottle source + valve heater.
+#
+# Bottle switch: pure mechanical switch, one side to GND, closes when the bottles are
+# interconnected (primary bottle in use). Open (secondary bottle in use) reads HIGH via
+# the internal pull-up. device_class "problem" gives green when off (primary) and red
+# when on (secondary) in the HA UI without any extra template needed.
+binary_sensor:
+  - platform: gpio
+    id: gas_bottle_secondary
+    name: "Gas Bottle On Secondary"
+    device_class: problem
+    pin:
+      number: GPIO1
+      mode:
+        input: true
+        pullup: true
+
+# Gas valve heater: N-MOS via optocoupler, plain on/off. Defaults OFF on boot/reset.
+switch:
+  - platform: gpio
+    id: gas_valve_heater
+    name: "Gas Valve Heater"
+    pin: GPIO7
+    restore_mode: ALWAYS_OFF

@@ -1,0 +1,63 @@
+# EBL30 electroblock 12V main power toggle.
+#
+# The EBL30 has two control lines, A11 (turn ON) and A12 (turn OFF), each normally
+# pulled up to 12 V internally and triggered by a LOW pulse. Each line is driven here
+# by an ESP GPIO -> optocoupler -> N-MOS, so from the ESP's point of view the GPIO
+# goes HIGH to turn its N-MOS on, which then pulls the EBL30 line LOW for the pulse.
+#
+# Home Assistant only ever sees one "12V Power" toggle; internally it fires exactly one
+# of the two pulse lines and never both. `mode: queued` on the script both serializes
+# rapid toggling (so a second command can't start mid-pulse) and, combined with the
+# trailing delay, enforces the >=500 ms minimum gap between commands.
+switch:
+  - platform: gpio
+    id: ebl30_on_pulse
+    internal: true
+    pin: GPIO38
+    restore_mode: ALWAYS_OFF
+
+  - platform: gpio
+    id: ebl30_off_pulse
+    internal: true
+    # Native-USB D- pin; safe to repurpose because this board's console/flashing goes
+    # over the CH343 UART bridge (GPIO43/44), not native USB. ESPHome still prints a
+    # "GPIO19 conflicts with USB-Serial-JTAG" compile warning — harmless here since
+    # `logger.hardware_uart` is UART0, not USB_SERIAL_JTAG. Verify with a meter before
+    # trusting it in the field.
+    pin: GPIO19
+    restore_mode: ALWAYS_OFF
+
+  - platform: template
+    name: "12V Power (EBL30)"
+    id: ebl30_power
+    icon: "mdi:power-socket-eu"
+    optimistic: true
+    restore_mode: ALWAYS_OFF
+    turn_on_action:
+      - script.execute:
+          id: ebl30_pulse
+          turn_on: true
+    turn_off_action:
+      - script.execute:
+          id: ebl30_pulse
+          turn_on: false
+
+script:
+  - id: ebl30_pulse
+    parameters:
+      turn_on: bool
+    mode: queued
+    then:
+      - if:
+          condition:
+            lambda: 'return turn_on;'
+          then:
+            - switch.turn_on: ebl30_on_pulse
+            - delay: 200ms
+            - switch.turn_off: ebl30_on_pulse
+          else:
+            - switch.turn_on: ebl30_off_pulse
+            - delay: 200ms
+            - switch.turn_off: ebl30_off_pulse
+      # Minimum gap before the next queued command may start.
+      - delay: 500ms
