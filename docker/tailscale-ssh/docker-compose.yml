@@ -1,0 +1,44 @@
+services:
+  tailscale:
+    image: tailscale/tailscale:stable
+    container_name: tailscale-ssh
+    hostname: ${TS_HOSTNAME:-camper-mac-ssh}
+    env_file:
+      - ../../.env
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:-}
+      TS_HOSTNAME: ${TS_HOSTNAME:-camper-mac-ssh}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+    volumes:
+      - tailscale-data:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    network_mode: host
+    privileged: true
+    stdin_open: true
+    tty: true
+
+  ssh-client:
+    image: alpine:3.20
+    container_name: tailscale-ssh-client
+    env_file:
+      - ../../.env
+    depends_on:
+      - tailscale
+    network_mode: service:tailscale
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        apk add --no-cache openssh-client sshpass >/dev/null 2>&1 || true
+        echo "SSH client ready. Use: docker compose exec ssh-client sh"
+        echo "Then run: sshpass -p \"$${SSH_PWD}\" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p \"$${SSH_PORT}\" \"$${SSH_USER}@$${SSH_HOST}\""
+        tail -f /dev/null
+
+volumes:
+  tailscale-data:
