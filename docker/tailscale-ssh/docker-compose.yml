@@ -40,5 +40,35 @@ services:
         echo "Then run: sshpass -p \"$${SSH_PWD}\" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p \"$${SSH_PORT}\" \"$${SSH_USER}@$${SSH_HOST}\""
         tail -f /dev/null
 
+  ha-web-tunnel:
+    image: alpine:3.20
+    container_name: tailscale-ha-web-tunnel
+    env_file:
+      - ../../.env
+    depends_on:
+      - tailscale
+    network_mode: service:tailscale
+    restart: unless-stopped
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        apk add --no-cache openssh-client sshpass >/dev/null 2>&1 || true
+        echo "Starting Home Assistant tunnel on http://localhost:8123"
+        while true; do
+          sshpass -p "$${SSH_PWD}" ssh \
+            -N \
+            -o ExitOnForwardFailure=yes \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=3 \
+            -o StrictHostKeyChecking=no \
+            -o UserKnownHostsFile=/dev/null \
+            -p "$${SSH_PORT}" \
+            -L "0.0.0.0:8123:127.0.0.1:8123" \
+            "$${SSH_USER}@$${SSH_HOST}"
+          echo "Tunnel disconnected; retrying in 3s..."
+          sleep 3
+        done
+
 volumes:
   tailscale-data:
