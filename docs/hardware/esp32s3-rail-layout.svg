@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="860" viewBox="0 0 1800 860">
+  <defs>
+    <style>
+      .title { font: 700 34px Arial, sans-serif; fill: #1f2937; }
+      .subtitle { font: 500 19px Arial, sans-serif; fill: #374151; }
+      .boxTitle { font: 700 20px Arial, sans-serif; fill: #111827; }
+      .boxText { font: 500 15px Arial, sans-serif; fill: #1f2937; }
+      .small { font: 500 13px Arial, sans-serif; fill: #374151; }
+      .wire { stroke: #0f766e; stroke-width: 3.5; fill: none; }
+      .wire2 { stroke: #1d4ed8; stroke-width: 3.5; fill: none; }
+      .wire3 { stroke: #b45309; stroke-width: 3.5; fill: none; }
+      .wire4 { stroke: #be123c; stroke-width: 3.5; fill: none; }
+      .bus5v { stroke: #dc2626; stroke-width: 5; fill: none; }
+      .busgnd { stroke: #111827; stroke-width: 5; fill: none; }
+      .note { font: 500 14px Arial, sans-serif; fill: #111827; }
+    </style>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,4 L0,8 z" fill="#0f766e" />
+    </marker>
+    <marker id="arrowBlue" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,4 L0,8 z" fill="#1d4ed8" />
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1800" height="860" fill="#f8fafc" />
+
+  <text x="40" y="58" class="title">ESP32-S3 Rail Layout (optimized for shortest internal wiring)</text>
+  <text x="40" y="92" class="subtitle">Left-to-right board order: Input | Terminal Adapter+ESP32 | Output | LIN | Charger Switch | Step-Down</text>
+
+  <rect x="40" y="180" width="245" height="280" rx="12" fill="#dcfce7" stroke="#16a34a" stroke-width="2"/>
+  <text x="58" y="215" class="boxTitle">Input Board</text>
+  <text x="58" y="242" class="boxText">Use side: IN1..IN8 + G</text>
+  <text x="58" y="266" class="boxText">IN1=GPIO1</text>
+  <text x="58" y="288" class="boxText">IN2=GPIO2</text>
+  <text x="58" y="310" class="boxText">IN3=GPIO6</text>
+  <text x="58" y="332" class="boxText">IN4=GPIO20</text>
+  <text x="58" y="354" class="boxText">IN5=GPIO4</text>
+  <text x="58" y="376" class="boxText">IN6=GPIO5*</text>
+  <text x="58" y="406" class="small">*If rain is analog, route GPIO5 direct.</text>
+
+  <rect x="325" y="150" width="430" height="340" rx="12" fill="#dbeafe" stroke="#1d4ed8" stroke-width="2"/>
+  <text x="345" y="186" class="boxTitle">Terminal Adapter + ESP32-S3</text>
+  <text x="345" y="214" class="boxText">Keep as central hub on the rail</text>
+  <text x="345" y="240" class="small">Key screws used: 1,2,4,5,6,7,16,17,18,19,20,38,47,3V3,5Vin,GND</text>
+  <text x="345" y="268" class="small">Avoid: 0,3,45,46</text>
+
+  <rect x="790" y="180" width="250" height="280" rx="12" fill="#fee2e2" stroke="#dc2626" stroke-width="2"/>
+  <text x="808" y="215" class="boxTitle">Output Board</text>
+  <text x="808" y="242" class="boxText">Use side: IN1..IN4 + G</text>
+  <text x="808" y="268" class="boxText">IN1=GPIO38 (EBL ON)</text>
+  <text x="808" y="290" class="boxText">IN2=GPIO19 (EBL OFF)</text>
+  <text x="808" y="312" class="boxText">IN3=GPIO7 (Gas heater)</text>
+  <text x="808" y="334" class="boxText">IN4=GPIO47 (Water pump)</text>
+
+  <rect x="1075" y="200" width="200" height="240" rx="12" fill="#fef9c3" stroke="#ca8a04" stroke-width="2"/>
+  <text x="1095" y="235" class="boxTitle">LIN Converter</text>
+  <text x="1095" y="262" class="boxText">TX/RX/SLP/GND side</text>
+  <text x="1095" y="286" class="boxText">RX &lt;- GPIO17</text>
+  <text x="1095" y="308" class="boxText">TX -&gt; GPIO18</text>
+  <text x="1095" y="330" class="boxText">SLP &lt;- 3V3</text>
+  <text x="1095" y="352" class="boxText">GND &lt;- GND</text>
+
+  <rect x="1310" y="210" width="200" height="220" rx="12" fill="#ede9fe" stroke="#7c3aed" stroke-width="2"/>
+  <text x="1328" y="246" class="boxTitle">Charger Switch</text>
+  <text x="1328" y="273" class="boxText">Signal+ &lt;- GPIO16</text>
+  <text x="1328" y="295" class="boxText">Signal- &lt;- GND</text>
+  <text x="1328" y="320" class="small">DC+/DC- from 5V rail</text>
+  <text x="1328" y="342" class="small">OUT+/OUT- to phone charger</text>
+
+  <rect x="1545" y="220" width="210" height="200" rx="12" fill="#ffedd5" stroke="#ea580c" stroke-width="2"/>
+  <text x="1563" y="256" class="boxTitle">LM2596 Step-Down</text>
+  <text x="1563" y="282" class="boxText">IN+ / IN- from 12V</text>
+  <text x="1563" y="304" class="boxText">OUT+ -> 5Vin bus</text>
+  <text x="1563" y="326" class="boxText">OUT- -> GND bus</text>
+
+  <path class="wire" marker-end="url(#arrow)" d="M285 250 C305 250, 300 250, 325 250" />
+  <text x="292" y="238" class="small">QC-A bundle (inputs)</text>
+
+  <path class="wire4" d="M755 285 C770 285, 775 285, 790 285" />
+  <text x="700" y="276" class="small">GPIO38,19,7,47 + GND</text>
+
+  <path class="wire2" d="M755 340 C905 340, 930 340, 1075 320" />
+  <text x="840" y="360" class="small">LIN: GPIO17,18,3V3,GND</text>
+
+  <path class="wire3" d="M755 390 C1060 390, 1240 350, 1310 300" />
+  <text x="1010" y="410" class="small">Charger ctrl: GPIO16 + GND</text>
+
+  <path class="bus5v" d="M1750 610 L320 610" />
+  <path class="busgnd" d="M1750 650 L320 650" />
+  <text x="1560" y="600" class="note">5V bus</text>
+  <text x="1560" y="682" class="note">GND bus</text>
+
+  <path class="bus5v" d="M1650 420 L1650 610" />
+  <path class="busgnd" d="M1690 420 L1690 650" />
+  <path class="bus5v" d="M1410 430 L1410 610" />
+  <path class="busgnd" d="M1450 430 L1450 650" />
+  <path class="bus5v" d="M1170 440 L1170 610" />
+  <path class="busgnd" d="M1210 440 L1210 650" />
+  <path class="bus5v" d="M900 460 L900 610" />
+  <path class="busgnd" d="M940 460 L940 650" />
+  <path class="bus5v" d="M150 460 L150 610" />
+  <path class="busgnd" d="M190 460 L190 650" />
+  <path class="bus5v" d="M500 490 L500 610" />
+  <path class="busgnd" d="M540 490 L540 650" />
+
+  <text x="40" y="735" class="note">Notes:</text>
+  <text x="40" y="760" class="small">1) Keep logic-side terminals facing the adapter. 2) Keep high-current/load terminals on the outer side.</text>
+  <text x="40" y="782" class="small">3) Verify step-down to 5.0V before connecting ESP32. 4) Keep all grounds common. 5) Do not use 0/3/45/46 for field wiring.</text>
+</svg>
