@@ -1,0 +1,55 @@
+# ===========================================================================
+# CC1101 862-871 MHz RSSI scanner - is the roof-vent remote an 868 MHz device?
+#
+# USB-serial only on purpose (no Wi-Fi/API/OTA), like nrf24-sniffer.yaml: a missing
+# hotspot cannot reboot the node mid-test.  Logic lives in cc1101_sniffer.h.
+#
+# The old version never configured the CC1101 and just polled GDO0.  After reset GDO0
+# outputs a 135 kHz clock (IOCFG0 = CLK_XOSC/192), hence the endless "burst" logs.
+#
+# Wiring (ESP32-C3 Super Mini -> CC1101 868 MHz module):
+#   VCC -> 3V3 (never 5 V)   GND -> GND
+#   CSN -> GPIO7   SCK -> GPIO4   MOSI -> GPIO6   MISO -> GPIO5
+#   GDO0 -> GPIO3 (not used by the scanner)   GDO2 -> n/c
+#   ANT -> 868 MHz antenna or ~8.6 cm straight quarter-wave wire
+#
+# Procedure (all timing is from boot; also cued by the onboard LED, GPIO8):
+#   0-15 s     learn noise floor  - hands off      LED: short blip every second
+#   15-35 s    IDLE window        - hands off      LED: short blip every second
+#   35-55 s    PRESS window       - press buttons  LED: solid ON
+#   ...then 20 s IDLE / 20 s PRESS repeating; a VERDICT line follows every window.
+# In PRESS windows hold each remote button ~1 s, release ~1 s, keep the remote
+# 0.3-1 m from the antenna.  Fast LED blinking = CC1101 not answering on SPI.
+# ===========================================================================
+
+substitutions:
+  pin_sck: "4"
+  pin_miso: "5"
+  pin_mosi: "6"
+  pin_csn: "7"
+  pin_led: "8"
+
+esphome:
+  name: vent-868-sniffer
+  friendly_name: Vent 868 Sniffer
+  comment: Offline CC1101 862-871 MHz scanner for vent remote detection
+  includes:
+    - cc1101_sniffer.h
+  on_boot:
+    priority: -100
+    then:
+      - lambda: 'rf868::begin(${pin_sck}, ${pin_miso}, ${pin_mosi}, ${pin_csn}, ${pin_led});'
+
+esp32:
+  board: esp32-c3-devkitm-1
+  framework:
+    type: esp-idf
+    version: "6.0.1"
+
+logger:
+  level: INFO
+
+interval:
+  - interval: 50ms
+    then:
+      - lambda: 'rf868::tick();'

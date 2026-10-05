@@ -23,12 +23,14 @@
 #     RX node can be validated independently.  This separates "our 433 MHz rig
 #     is broken" from "the remote is not 433 MHz OOK".
 #   * 315 MHz was also tested without repeatable remote-correlated activity.
-#   * This 2.4 GHz scanner was tested over repeated marked button windows; no
-#     activity distinguishable from the Wi-Fi/BLE baseline was observed.
-#
-#   -> 433 MHz, 315 MHz and 2.4 GHz are negative. The next test is 868 MHz with
-#      an RTL-SDR waterfall (preferred) or an 868/915 MHz CC1101 RSSI scanner.
-#      See docs/architecture/vent-rf-integration.md for the procedure.
+#   * 868 MHz (CC1101 RSSI sweep, vent-868-sniffer.yaml) negative 2026-10-04.
+#   * 2026-10-04 re-assessment: the remote PCB (vent/ photos) carries a ~2 cm
+#     inverted-F PCB antenna (2.4 GHz size), an unmarked SSOP16 transceiver and
+#     a 12.000 MHz crystal -> LT8900/LT8910/LT8920/PL1167 family, 2.4 GHz GFSK.
+#     The first version of this scanner read RPD once per 200 us hop (one
+#     ~40 us snapshot), so a short-packet remote was nearly invisible next to
+#     Wi-Fi, and its sniffer ran at 2 Mbps on the busiest (Wi-Fi) channel.
+#     The 2.4 GHz "negative" was therefore inconclusive.  Rewritten 2026-10-04.
 #
 # ---------------------------------------------------------------------------
 # Wiring: nRF24L01(+) module -> ESP32-C3 mini
@@ -67,26 +69,33 @@
 # Signal logic is 5 V tolerant on the inputs, so no dividers are needed here.
 #
 # ---------------------------------------------------------------------------
-# How to run the test
+# How to run it  (sniff_ch below picks the mode)
 # ---------------------------------------------------------------------------
-# 1. Power the node over USB and open the logs.  If you see "nRF24 not
-#    responding", stop and fix the wiring/cap - every later result is garbage.
-# 2. Let it print two or three "idle window" reports with the remote untouched.
-#    This is your baseline.  Nearby Wi-Fi and BLE WILL show up: Wi-Fi occupies
-#    wide ~22 MHz blobs (ch 1/6/11 centre on nRF ch 12 / 37 / 62) and BLE
-#    advertising sits on nRF ch 2, 26 and 80.  Moving away from the phone
-#    hotspot makes the picture much cleaner.
-# 3. Hold the remote 5-15 cm from the module antenna - the RPD threshold is
-#    about -64 dBm, so it only sees strong, close signals.
-# 4. Hold the onboard BOOT button (GPIO9) and repeatedly press remote buttons.
-#    Reports for those windows are tagged "BUTTON HELD" and additionally try a
-#    raw packet capture on the busiest channel.
-# 5. Compare. A new narrow spike (one to three adjacent channels) that appears
-#    only in BUTTON HELD windows indicates a 2.4 GHz transmitter. This vent did
-#    not produce one; the retained scanner can reproduce or verify that result.
+# If the LED blinks fast / the log says "nRF24 not responding", fix the
+# wiring/cap first.
 #
-# NOTE: GPIO9 is a strapping pin.  Do not hold BOOT while powering up or the
-# chip enters download mode instead of booting.
+# BUTTON mode (sniff_ch >= 0, default 29 = 2429 MHz): decode the remote.
+#   The log names the remote button to press.  Press it 4-10x, ~2 s apart,
+#   remote 10-30 cm from the nRF24 antenna, and note what the remote display /
+#   vent does each time.  Each press prints the majority-voted packet (bytes
+#   shown LSB-first, as the remote sends them), the decoded fan level, and the
+#   bytes that changed vs the previous press:
+#     [POWER ] #2  8B 02 C1 8C 4A F8 C2 10 00 70 00 7C 06 ... | fan 0% | q 94% 9/9
+#               vs #1:  b11 79>7C  b14 67>DA  b15 15>0C
+#   BOOT tap  = sequence report for this button + table of all buttons, then
+#               the next button.  Each changing byte is classified:
+#               A = alternates (explicit ON/OFF-style state),
+#               +/- = steps every press (absolute level, or a press counter),
+#               ~ = no simple pattern (checksum, rolling code or noise).
+#   BOOT hold = clear this button and start again (e.g. "+" from 0 %).
+#   Presses with q < 80 % are shown but ignored by the analysis.
+#   Few decoded presses / low q: try sniff_ch 28 or 30 (frequency offset).
+#
+# SCAN mode (sniff_ch "-1"): find the channel.  Press BOOT once, then follow
+#   the LED: 20 s HANDS OFF (blip every second) / 20 s PRESS (solid on).  A
+#   VERDICT line names the channel used only while pressing.  Wi-Fi shows up
+#   as ~22-channel-wide blobs, BLE adverts on nRF ch 2, 26 and 80.
+# LT89xx channel = nRF channel - 2.
 # ===========================================================================
 
 substitutions:
@@ -99,7 +108,10 @@ substitutions:
   pin_miso: "5"
   pin_mosi: "6"
   pin_led: "8"
-  pin_mark: "9"
+  pin_boot: "9"
+  # nRF channel to sniff right away (2400 + n MHz); "-1" = scan for it first.
+  # 2026-10-05 scan: remote-correlated on 29 (2429 MHz), weaker on 9 and 41.
+  sniff_ch: "29"
 
 esphome:
   name: ${devicename}
@@ -110,7 +122,7 @@ esphome:
   on_boot:
     priority: -100
     then:
-      - lambda: 'nrf24::begin(${pin_sck}, ${pin_miso}, ${pin_mosi}, ${pin_csn}, ${pin_ce});'
+      - lambda: 'nrf24::begin(${pin_sck}, ${pin_miso}, ${pin_mosi}, ${pin_csn}, ${pin_ce}, ${pin_led}, ${pin_boot}, ${sniff_ch});'
 
 esp32:
   board: lolin_c3_mini
@@ -121,41 +133,7 @@ esp32:
 logger:
   level: INFO
 
-binary_sensor:
-  # Onboard BOOT button, used to tag "I am pressing the remote right now" windows.
-  - platform: gpio
-    id: mark_btn
-    internal: true
-    pin:
-      number: GPIO${pin_mark}
-      mode:
-        input: true
-        pullup: true
-      inverted: true
-
-output:
-  - platform: gpio
-    pin:
-      number: GPIO${pin_led}
-      inverted: true
-    id: led_output
-
 interval:
-  # 32 channels per pass is ~7 ms of radio time, which keeps the ESPHome loop responsive.
-  - interval: 10ms
+  - interval: 50ms
     then:
-      - lambda: 'nrf24::scan(32);'
-
-  - interval: 5s
-    then:
-      - lambda: |-
-          const uint8_t busiest = nrf24::report(id(mark_btn).state);
-          if (id(mark_btn).state && busiest != 0xFF)
-            nrf24::sniff(busiest, 25);
-
-  - interval: 1s
-    then:
-      # Heartbeat: confirms the firmware is alive without any network stack.
-      - output.turn_on: led_output
-      - delay: 40ms
-      - output.turn_off: led_output
+      - lambda: 'nrf24::tick();'

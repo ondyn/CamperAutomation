@@ -76,7 +76,7 @@ captive_portal:
 remote_receiver:
   pin:
     number: GPIO4
-    inverted: true   # try true if false yields nothing — some RX modules are active-LOW
+    inverted: false  # MX-RM-5V DATA is high while a carrier is present; true breaks rc_switch decoding
   # Limit to protocols we actually need; avoids Pronto matching every noise spike.
   # Add 'raw' temporarily if rc_switch yields nothing — paste raw timings for
   # manual protocol analysis.

@@ -12,22 +12,121 @@ WC-1200, Heng Long, Camplux variants, etc.). Key observable features:
 
 ## Investigation Status
 
-The pairing procedure originally suggested an EV1527-style fixed-code remote, but pairing behaviour
-alone does not identify the carrier frequency or modulation. No protocol has been captured yet, so
-claims about EV1527, encryption, directionality and replayability remain unproven.
+**Solved (2026-10-05):** the remote is a **2.4 GHz GFSK transmitter (LT8900/PL1167 class, 1 Mbps,
+2429 MHz)** that sends its **complete state** in every packet. Fields, check byte and CRC are decoded
+and an encoder reproduces every captured packet - see [Radio Protocol](#radio-protocol-decoded-2026-10-05).
+The earlier EV1527 / 433 MHz hypothesis (based on the pairing procedure) was wrong.
 
 | Band | Test method | Result |
 |---|---|---|
-| 433.92 MHz | MX-RM-5V receiver with `vent-sniffer.yaml`; separate EV1527 TX/RX loopback configs are available to validate the test rig | No repeatable remote-correlated code or signal |
-| 315 MHz | Prior receiver test; exact setup not recorded in this repository | No repeatable remote-correlated code or signal |
-| 2.4 GHz | nRF24L01 RPD sweep over 2400-2525 MHz with marked remote-button windows | No remote-correlated narrow-band activity |
-| 868 MHz | Not tested | **Next test** |
+| 433.92 MHz | MX-RM-5V receiver with `vent-sniffer.yaml`; separate EV1527 TX/RX loopback configs are available to validate the test rig | Inconclusive: `inverted: true` broke rc_switch decoding (fixed 2026-10-04) and a superregenerative OOK receiver cannot see FSK. Excluded anyway by the PCB antenna size |
+| 315 MHz | Prior receiver test; exact setup not recorded in this repository | Unverified. Excluded by the PCB antenna size |
+| 2.4 GHz | nRF24L01 (`nrf24-sniffer.yaml`): continuous-RPD scan 2400-2483 MHz with IDLE/PRESS windows, then 1 Mbps raw sniff and per-button majority voting | **CONFIRMED 2026-10-05.** Scan: ch 29 = 2429 MHz rises only while pressing (z=6), weaker 2409/2441 MHz. Sniff on 2429 MHz with the vent off: 210 structured packets pressing vs 17 hands-off. Protocol fully decoded (below) |
+| 862-871 MHz | CC1101 RSSI sweep (`vent-868-sniffer.yaml`), 46 ch x 200 kHz, 42 sweeps/s, timed IDLE/PRESS windows | No remote-correlated activity (2026-10-04). Ambient 868.8-869.2 MHz traffic at -60..-86 dBm was received equally in IDLE and PRESS windows, which proves the 868 MHz RX chain works |
+| Infrared | Ruled out: the remote has no IR LED and carries a PCB antenna | Not IR |
 
-Negative results apply to the tested hardware and method. They become strong exclusions only when the
-receiver is validated with a known transmitter on the same band. The 2.4 GHz scan is considered
-negative after repeated marked windows differed no more than the Wi-Fi/BLE baseline.
+**Remote PCB evidence (photos in `vent/`):** Generalplus GPM8F3732B LCD MCU, an unmarked SSOP16 RF
+chip with a 12.000 MHz crystal and a ~2 cm inverted-F PCB antenna. A quarter-wave on FR4 is ~2 cm at
+2.4 GHz but ~5 cm at 868 MHz and ~10 cm at 433 MHz, so the antenna alone points to 2.4 GHz. SSOP16 +
+12 MHz matches the LT8900/LT8910/LT8920/PL1167 GFSK family (1 Mbps default, $f = 2402 + ch$ MHz), the
+same family as MiLight remotes, which the nRF24L01 can sniff and emulate.
 
-## Next Test: 868 MHz
+**Decoding tools:** `nrf24-sniffer.yaml` BUTTON mode (`sniff_ch: "29"`) majority-votes each press into
+one packet and compares buttons over the air. `u1u2-spi-sniffer.yaml` (ESP32-C2, listen-only SPI slave)
+taps the U1->U2 bus inside the remote for the exact sync word, channel, data rate and FIFO payloads.
+
+## Radio Protocol (decoded 2026-10-05)
+
+Source: `nrf24-sniffer.yaml` BUTTON mode, fresh remote battery (vote quality 85-97 %), 12 presses per
+button, all 9 buttons. Remaining uncertainty is marked *unconfirmed*.
+
+### Physical layer
+
+| Item | Value |
+|---|---|
+| Chip family | LT8900 / LT8910 / LT8920 / PL1167 (unmarked SSOP16 + 12 MHz crystal) |
+| Modulation / rate | GFSK, 1 Mbps (250 kbps and 2 Mbps capture only noise) |
+| Channel | 2429 MHz = nRF24 ch 29 = LT89xx ch 27 ($f = 2402 + ch$). 2409 / 2441 MHz showed weaker press-correlated hits; channel hopping is *unconfirmed* |
+| Bit order | LSB first within each byte (as PL1167/MiLight) |
+| Per press | a burst of identical packets every ~50 ms for ~200 ms |
+| Packet | preamble (`...0101`), then the 16 bytes below, then silence |
+
+### Packet layout
+
+Bytes as LSB-first values. The nRF24 sniffer's printed bytes `b0..b16` are this layout shifted by
+3 bits (`byte[k] = b[k] >> 3 | (b[k+1] & 7) << 5`); the table uses the true byte grid in which every
+field is byte-aligned.
+
+| Byte | Value | Meaning |
+|---|---|---|
+| 0-9 | `51 20 98 51 09 5F 18 00 00 0E` | Constant: sync word / remote ID / header. Presumably what the vent learns when pairing (*unconfirmed*). Byte 7 reads 00/02 at random: radio noise, not data |
+| 10 | flags | bit 7 = power ON, bit 6 = rain detection enabled, bit 5 = lid closing, bit 4 = lid opening, bits 3-0 = 0 |
+| 11 | `CF` | Constant |
+| 12 | fan | bit 7 = direction OUT (1) / IN (0), bits 3-0 = fan level 0-10 (= 0-100 % in 10 % steps) |
+| 13 | check | `(byte10 + byte12 + 0x5F) & 0xFF` - additive check computed by the remote MCU |
+| 14-15 | CRC-16 | Low byte first. Reflected CCITT polynomial `0x8408` (LT8900/PL1167 hardware CRC), over bytes 10-13 with effective seed `0x4052` (the constant bytes before byte 10 are folded into the seed) |
+
+### Button semantics (all absolute - the vent is a stateless receiver)
+
+The remote keeps the state shown on its LCD and every press transmits the **whole** new state. The vent
+simply applies it; nothing is a relative "toggle" or "+1" command.
+
+| Button | Effect on the transmitted state |
+|---|---|
+| POWER | Alternates between ON (`flags = 80`) and OFF (`flags = 20`). The OFF packet also carries the "closing" bit (lid closes on power-off, *unconfirmed*). ON = 80 is inferred: every other button was exercised in that state |
+| + / - | Fan level +1 / -1, clamped at 0 and 10; the packet carries the absolute level |
+| FAN | Fan off <-> on: level 0 <-> last level (10 in the test) |
+| IN / OUT | Sets direction bit 0 / 1. Same packet on every press (OUT at fan 0 = the base packet) |
+| UP | Alternates lid opening (`bit 4`) / stop |
+| DOWN | Alternates lid closing (`bit 5`) / stop |
+| RAIN SENSOR | Alternates rain detection enabled (`bit 6`) / disabled. It does not move the lid: the vent closes the lid on its own when rain is detected. (In the capture `bit 5` was also set, left over from an extra 13th DOWN press.) |
+
+Observed packets (bytes 10-15, true framing):
+
+| State | Bytes 10-15 |
+|---|---|
+| ON, fan 0, OUT (base) | `80 CF 80 5F 9B A1` |
+| OFF | `20 CF 80 FF AC A6` |
+| ON, fan 10 % / 50 % / 100 % | `80 CF 81 60 37 75` / `80 CF 85 64 73 50` / `80 CF 8A 69 5E 28` |
+| ON, fan 0, IN | `80 CF 00 DF 5F A1` |
+| ON, lid opening | `90 CF 80 6F B9 53` |
+| ON, lid closing | `A0 CF 80 7F CA 0F` |
+| ON, rain detection + closing | `E0 CF 80 BF 71 DF` |
+
+### Encoder
+
+Validated against every captured state: exact match, or 1 bit off in the last CRC byte, which is the
+known noisy tail of the nRF24 capture.
+
+```python
+def crc16(data, crc=0x4052):
+    for x in data:
+        crc ^= x
+        for _ in range(8):
+            crc = (crc >> 1) ^ 0x8408 if crc & 1 else crc >> 1
+    return crc
+
+def vent_payload(power, rain, closing, opening, direction_out, level):
+    flags = power << 7 | rain << 6 | closing << 5 | opening << 4
+    fan = direction_out << 7 | level            # level 0..10
+    body = [flags, 0xCF, fan, (flags + fan + 0x5F) & 0xFF]
+    c = crc16(body)
+    return HEADER + body + [c & 0xFF, c >> 8]   # HEADER = 51 20 98 51 09 5F 18 00 00 0E
+# e.g. ON, fan 40 %, IN, lid opening -> 90 CF 04 F3 F0 E6
+```
+
+### Open points
+
+- Exact packet start, sync-word length, trailer and whether bytes 0-9 contain a length byte. The
+  U1->U2 SPI capture (`u1u2-spi-sniffer.yaml`) shows the LT89xx register setup (r32 preamble/sync/trailer,
+  r36-r39 sync word, r41 CRC flags/seed) and settles this.
+- Whether the remote also transmits on 2409 / 2441 MHz.
+- Confirm ON = `flags 80` / OFF = `flags 20` on the vent itself, and whether the vent needs the
+  original remote ID (bytes 0-9) or accepts a newly paired one.
+
+## Historical: 868 MHz Test Procedure
+
+Retained as a record; the remote turned out to be 2.4 GHz.
 
 ### Recommended equipment: RTL-SDR
 
@@ -102,17 +201,20 @@ The CC1101 can reuse the nRF24 scanner's C3 SPI pins:
 Avoid simple RXB6/MX-RM-style 868 MHz receivers as the first 868 MHz test. They are useful only for
 ASK/OOK and a negative result would not rule out an FSK remote.
 
-## Integration Options After Capture
+## Integration Options
 
 | Approach | Effort | Reliability | Invasiveness |
 |---|---|---|---|
-| **RF replay via ESP32 + TX module** | Low | High (no state feedback) | None — non-invasive |
-| **Wire to PCB button pads** | Medium | High | Low — solder only, leave PCB intact |
-| **Replace control board** | High | Very high (full PWM control) | High — invasive |
+| **ESP32 + nRF24L01 emulating the LT89xx packet** (as openmili does for MiLight/PL1167) | Medium | High, full absolute state, no feedback | None |
+| **ESP32 + LT8920 module** (native chip, needs sync word/CRC setup from the SPI capture) | Medium | High | None |
+| **Wire to PCB button pads** | Medium | High | Low - solder only, leave PCB intact |
+| **Replace control board** | High | Very high (full PWM control) | High - invasive |
 
-**Recommended path:** identify the 868 MHz carrier and modulation first. RF replay is viable only
-after repeatable packets are captured. Add wired button-pad tapping if RF remains unidentified or
-state feedback is required.
+**Recommended path:** RF control. Because every packet carries the complete state, Home Assistant can
+set power, fan level 0-100 %, direction, lid and rain detection directly with one packet, without
+tracking the remote's state. Confirm the header/sync word with the U1->U2 SPI capture first, then
+transmit on 2429 MHz with the encoder above, repeating the packet every ~50 ms for ~200 ms like the
+remote. The original remote keeps working; its LCD will just not reflect changes made from HA.
 
 ---
 

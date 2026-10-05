@@ -1,0 +1,129 @@
+# ===========================================================================
+# U1 -> U2 bus sniffer for the roof-vent remote (ESP32-C2 Super Mini)
+#
+# The remote PCB: U1 = Generalplus GPM8F3732B MCU, U2 = LT8920 2.4 GHz GFSK
+# transceiver (SSOP16, 12 MHz crystal; datasheet: LT8920.PDF).  U1 configures U2
+# and writes every radio packet into U2's TX FIFO over SPI, so listening on that
+# bus gives the exact sync word, channel, data rate, framing and payload - no
+# radio bit errors.  Logic lives in spi_sniffer.h.  USB serial only, no Wi-Fi.
+#
+# The ESP only ever LISTENS: all pins are inputs, the SPI slave has no MISO.
+#
+# ---------------------------------------------------------------------------
+# LT8920 SSOP16 pinout (datasheet fig. 1)  ->  ESP32-C2 wiring
+# ---------------------------------------------------------------------------
+#   Pin 1 = dot / bevel.  Sanity check of the orientation: pins 6+7 go to the
+#   12 MHz crystal and pins 9+10 to the antenna, at the same end of the chip.
+#
+#              +----v----+
+#       MOSI  1|o        |16 SPI_CLK   -> GPIO6  (pin_clk)
+#       MISO  2|         |15 VSS       -> ESP GND
+#    VDD_DIG  3|         |14 SPI_SS    -> GPIO10 (pin_cs)
+#      RST_n  4|         |13 PKT       -> GPIO4  (pin_pkt)
+#    LDO_OUT  5| LT8920  |12 LDO_IN      (U2 supply = remote battery rail)
+#      XTALO  6|         |11 RF_VDD
+#      XTALI  7|         |10 ANT
+#    PLL_VDD  8|         | 9 ANTb
+#              +---------+
+#       pin 1 MOSI -> GPIO7 (pin_data)
+#
+#   * MISO (pin 2) is NOT connected: the ESP32-C2 has a single user SPI
+#     peripheral and a slave has one data input.  Register reads and RX FIFO
+#     data are therefore logged as "read rN" without their value.
+#   * RST_n (pin 4) is not needed; PKT (pin 13) is optional but shows when a
+#     packet has actually been sent on air (or received).
+#   * The SSOP16 package has no I2C_SEL / FIFO / BRCLK pins: it is always SPI.
+#   * The 4-pin "3.3V CLK SDA GND" header next to the LCD is U1's programming
+#     port, NOT the radio bus.  Its GND pad is a convenient ESP GND point.
+#   * Keep the remote on its own batteries.  LT8920 VDD_IO is 1.9-3.6 V; with
+#     weak batteries (< ~2.6 V) the highs fall below the ESP's VIH - use fresh
+#     batteries, or remove them and feed the battery contacts from the ESP 3V3.
+#   * GPIO6/7/10 are the C2's IO-MUX FSPI CLK/D/CS0 pins (no GPIO-matrix delay;
+#     LT8920 SPI clock can be up to 12 MHz).
+#
+# ---------------------------------------------------------------------------
+# LT8920 SPI format (datasheet ch. 6) - what the decoder relies on
+# ---------------------------------------------------------------------------
+#   * Packaged parts have CKPHA = 1: CLK idles low, MOSI changes on the rising
+#     edge and is sampled on the falling edge = SPI mode 1, MSB first.
+#   * Frame = [RW|A6..A0] then 16-bit words; RW 1 = read.  Several registers
+#     may share one SS frame (address auto-increments).
+#   * r50 is the FIFO, accessed byte-wise; one packet may be split over several
+#     SS frames.  The decoder joins consecutive r50 writes into one TX packet.
+#   * Other registers decoded: r7 TX_EN/RX_EN + channel (f = 2402 + ch MHz),
+#     r9 PA power, r32 preamble/sync/trailer length + coding + FEC,
+#     r35 sleep/retries/whitening seed, r36..r39 sync word (r36 LSB first on
+#     air; 16 bit = r36, 32 = r39:r36, 48 = r39:r38:r36, 64 = r39..r36),
+#     r40 sync error threshold, r41 CRC/scramble/length-byte/auto-ack/flag
+#     polarity/CRC seed, r44 data rate, r52 FIFO pointer clear.
+#     Registers never written are shown with their power-up reset value.
+#
+# ---------------------------------------------------------------------------
+# Procedure
+# ---------------------------------------------------------------------------
+# SPI (sniffer_mode: "spi", default):
+#   flash, then
+#     - take one remote battery out and back in -> start-up register writes
+#       are logged and, at the end of the burst, a decoded "CONFIG" block
+#       (channel, data rate, framing, SYNC WORD, CRC/length options).  The
+#       block is re-printed whenever U1 changes one of those registers.
+#     - press each button: "TX PACKET" lines are the exact FIFO payloads, with
+#       "^^" under bytes that differ from the previous packet, followed by
+#       "PKT flag active: TX packet sent".
+#   Garbage register numbers or "(partial byte)" lines mean a wiring problem
+#   (CLK and MOSI swapped, MISO wired instead of MOSI) or a wrong spi_mode.
+#
+# PROBE (sniffer_mode: "probe"), only if the SPI log stays empty or garbled:
+#   reflash with probe and press buttons.  Each second the log prints, per GPIO,
+#   the idle level and edges/s, plus a CLK/CS/DATA guess and whether it matches
+#   pin_clk/pin_data/pin_cs.  Expected: GPIO6 most edges idle L, GPIO7 data,
+#   GPIO10 idle H few edges, GPIO4 (PKT) a few edges idle L.
+#
+# Crystal: the C2 Super Mini (ESP8684) normally has a 26 MHz crystal.  If the
+# log is garbage at 115200 baud, change CONFIG_XTAL_FREQ_26 to CONFIG_XTAL_FREQ_40.
+# GPIO8/GPIO9 are strapping pins and GPIO19/20 are the USB-serial UART - avoid.
+# ===========================================================================
+
+substitutions:
+  sniffer_mode: "spi"     # "spi", or "probe" to verify the wiring
+  pin_clk: "6"            # LT8920 pin 16 SPI_CLK
+  pin_data: "7"           # LT8920 pin 1  MOSI
+  pin_cs: "10"            # LT8920 pin 14 SPI_SS
+  pin_pkt: "4"            # LT8920 pin 13 PKT flag; "-1" if not wired (spi mode only)
+  spi_mode: "1"           # LT8920 CKPHA = 1 -> CPOL 0 / CPHA 1
+
+esphome:
+  name: u1u2-spi-sniffer
+  friendly_name: U1-U2 SPI Sniffer
+  comment: Listen-only SPI sniffer for the vent remote's MCU-to-LT8920 bus
+  includes:
+    - spi_sniffer.h
+  on_boot:
+    priority: -100
+    then:
+      - lambda: >-
+          spisniff::begin(std::string("${sniffer_mode}") == "spi", ${pin_clk}, ${pin_data}, ${pin_cs},
+          ${pin_pkt}, ${spi_mode});
+
+# esp32:
+#   board: esp32-c2-devkitm-1
+#   flash_size: 2MB
+#   framework:
+#     type: esp-idf
+#     version: "6.0.1"
+#     sdkconfig_options:
+#       CONFIG_XTAL_FREQ_26: y
+esp32:
+  board: lolin_c3_mini
+  framework:
+    type: esp-idf
+    version: "6.0.1"
+
+logger:
+  level: INFO
+  baud_rate: 115200
+
+interval:
+  - interval: 20ms
+    then:
+      - lambda: 'spisniff::tick();'
