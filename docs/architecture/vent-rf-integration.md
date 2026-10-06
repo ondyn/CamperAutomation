@@ -12,9 +12,10 @@ WC-1200, Heng Long, Camplux variants, etc.). Key observable features:
 
 ## Investigation Status
 
-**Solved (2026-10-05):** the remote is a **2.4 GHz GFSK transmitter (LT8900/PL1167 class, 1 Mbps,
-2429 MHz)** that sends its **complete state** in every packet. Fields, check byte and CRC are decoded
-and an encoder reproduces every captured packet - see [Radio Protocol](#radio-protocol-decoded-2026-10-05).
+**Solved (2026-10-05):** the remote is an **LT8920 2.4 GHz GFSK transmitter (1 Mbps, hopping
+2408/2428/2464/2480 MHz)** that sends its **complete state** in every packet. Framing, fields, checksum
+and CRC are verified on the remote's internal SPI bus, and `vent/vent_protocol.py` reproduces every
+captured frame - see [Radio Protocol](#radio-protocol-fully-decoded-2026-10-05).
 The earlier EV1527 / 433 MHz hypothesis (based on the pairing procedure) was wrong.
 
 | Band | Test method | Result |
@@ -31,98 +32,107 @@ chip with a 12.000 MHz crystal and a ~2 cm inverted-F PCB antenna. A quarter-wav
 12 MHz matches the LT8900/LT8910/LT8920/PL1167 GFSK family (1 Mbps default, $f = 2402 + ch$ MHz), the
 same family as MiLight remotes, which the nRF24L01 can sniff and emulate.
 
-**Decoding tools:** `nrf24-sniffer.yaml` BUTTON mode (`sniff_ch: "29"`) majority-votes each press into
-one packet and compares buttons over the air. `u1u2-spi-sniffer.yaml` (ESP32-C2, listen-only SPI slave)
-taps the U1->U2 bus inside the remote for the exact sync word, channel, data rate and FIFO payloads.
+**Decoding tools:** `u1u2-spi-sniffer.yaml` (ESP32-C3, listen-only SPI slave on the remote's U1->U2 bus)
+prints one decoded block per press with the exact FIFO bytes and the computed on-air CRC - this is the
+ground truth. `nrf24-sniffer.yaml` BUTTON mode (`sniff_ch: "29"`) confirms it over the air: it finds the
+sync word in the raw 1 Mbps capture and logs frames whose CRC verifies ("radio CRC OK").
+Reference encoder with self-test: `vent/vent_protocol.py`.
 
-## Radio Protocol (decoded 2026-10-05)
+## Radio Protocol (fully decoded 2026-10-05)
 
-Source: `nrf24-sniffer.yaml` BUTTON mode, fresh remote battery (vote quality 85-97 %), 12 presses per
-button, all 9 buttons. Remaining uncertainty is marked *unconfirmed*.
+Source: U1->U2 SPI capture of all 9 buttons (35 presses, every checksum OK), cross-checked by 6
+CRC-valid frames received over the air by the nRF24. `vent/vent_protocol.py` reproduces all 16 distinct
+captured frames byte for byte, CRC included.
 
-### Physical layer
+### Physical layer (LT8920 registers written by U1 at power-up)
 
 | Item | Value |
 |---|---|
-| Chip family | LT8900 / LT8910 / LT8920 / PL1167 (unmarked SSOP16 + 12 MHz crystal) |
-| Modulation / rate | GFSK, 1 Mbps (250 kbps and 2 Mbps capture only noise) |
-| Channel | 2429 MHz = nRF24 ch 29 = LT89xx ch 27 ($f = 2402 + ch$). 2409 / 2441 MHz showed weaker press-correlated hits; channel hopping is *unconfirmed* |
-| Bit order | LSB first within each byte (as PL1167/MiLight) |
-| Per press | a burst of identical packets every ~50 ms for ~200 ms |
-| Packet | preamble (`...0101`), then the 16 bytes below, then silence |
+| Chip | U1 Generalplus MCU -> U2 LT8920 (SSOP16, 12 MHz crystal) |
+| Modulation / rate | GFSK 1 Mbps (r44 = 0100 default), NRZ, no FEC, no scrambling, no auto-ack (TX only) |
+| Channels | Hops LT8920 ch **6, 26, 62, 78** = 2408 / 2428 / 2464 / 2480 MHz ($f = 2402 + ch$), every packet on the next channel |
+| Per press | ~40 identical packets over ~250 ms (10 rounds of the 4 channels). Nothing is sent while the remote is OFF (only POWER transmits then); holding a button does not repeat |
+| Framing (r32 = 4800) | 3-byte preamble, 32-bit sync word, 4-bit trailer, then length byte + payload + CRC |
+| Sync word | r36 = `0516`, r39 = `1982` (r37 `0001` / r38 `5A5A` written but unused in 32-bit mode). On air: bytes `16 05 82 19` |
+| CRC (r41 = B000) | CRC on, length byte on, seed `00`: CRC-16/KERMIT (reflected poly `0x8408`, init `0000`) over length byte + payload, sent low byte first |
+| Bit order | Every byte LSB first on air |
 
-### Packet layout
+The remote's crystal sits about +1 MHz high: an nRF24 tuned to 2429 MHz receives ch 26 far better than
+one tuned to 2428 MHz.
 
-Bytes as LSB-first values. The nRF24 sniffer's printed bytes `b0..b16` are this layout shifted by
-3 bits (`byte[k] = b[k] >> 3 | (b[k+1] & 7) << 5`); the table uses the true byte grid in which every
-field is byte-aligned.
+### Frame (FIFO bytes written by U1, then the hardware CRC)
 
 | Byte | Value | Meaning |
 |---|---|---|
-| 0-9 | `51 20 98 51 09 5F 18 00 00 0E` | Constant: sync word / remote ID / header. Presumably what the vent learns when pairing (*unconfirmed*). Byte 7 reads 00/02 at random: radio noise, not data |
-| 10 | flags | bit 7 = power ON, bit 6 = rain detection enabled, bit 5 = lid closing, bit 4 = lid opening, bits 3-0 = 0 |
-| 11 | `CF` | Constant |
-| 12 | fan | bit 7 = direction OUT (1) / IN (0), bits 3-0 = fan level 0-10 (= 0-100 % in 10 % steps) |
-| 13 | check | `(byte10 + byte12 + 0x5F) & 0xFF` - additive check computed by the remote MCU |
-| 14-15 | CRC-16 | Low byte first. Reflected CCITT polynomial `0x8408` (LT8900/PL1167 hardware CRC), over bytes 10-13 with effective seed `0x4052` (the constant bytes before byte 10 are folded into the seed) |
+| 0 | `09` | Length byte (9 payload bytes) |
+| 1-5 | `5F 18 02 00 0E` | Remote ID / address, constant. Presumably what the vent learns when pairing (*unconfirmed*) |
+| 6 | flags | bit 7 = power ON, bit 6 = rain detection on, bit 5 = lid closing, bit 4 = lid opening, bits 3-0 = 0 |
+| 7 | `CF` | Constant |
+| 8 | fan | bit 7 = direction OUT (1) / IN (0), bits 3-0 = fan level 0-10 (x10 %) |
+| 9 | sum | `(byte0 + ... + byte8) & 0xFF` - computed by U1 |
+| 10-11 | CRC | CRC-16/KERMIT of bytes 0-9, low byte first - added by the LT8920 |
 
 ### Button semantics (all absolute - the vent is a stateless receiver)
 
-The remote keeps the state shown on its LCD and every press transmits the **whole** new state. The vent
-simply applies it; nothing is a relative "toggle" or "+1" command.
+The remote keeps the LCD state and every press transmits the **whole** new state; nothing is a relative
+"toggle" or "+1" command.
 
-| Button | Effect on the transmitted state |
+| Button | Effect on the transmitted state (observed) |
 |---|---|
-| POWER | Alternates between ON (`flags = 80`) and OFF (`flags = 20`). The OFF packet also carries the "closing" bit (lid closes on power-off, *unconfirmed*). ON = 80 is inferred: every other button was exercised in that state |
-| + / - | Fan level +1 / -1, clamped at 0 and 10; the packet carries the absolute level |
-| FAN | Fan off <-> on: level 0 <-> last level (10 in the test) |
-| IN / OUT | Sets direction bit 0 / 1. Same packet on every press (OUT at fan 0 = the base packet) |
-| UP | Alternates lid opening (`bit 4`) / stop |
-| DOWN | Alternates lid closing (`bit 5`) / stop |
-| RAIN SENSOR | Alternates rain detection enabled (`bit 6`) / disabled. It does not move the lid: the vent closes the lid on its own when rain is detected. (In the capture `bit 5` was also set, left over from an extra 13th DOWN press.) |
+| POWER | OFF -> ON sends `flags 80` (rain off, lid stop). ON -> OFF sends `flags 20` (OFF + closing) |
+| + / - | Fan level +1 / -1; at 10 further `+` presses resend level 10, at 0 `-` resends 0 |
+| FAN | Level 0 <-> last level (7 in the test) |
+| IN / OUT | Direction bit 0 / 1; repeated presses resend the same frame |
+| UP | Alternates opening (`bit 4`) / stop |
+| DOWN | Alternates closing (`bit 5`) / stop |
+| RAIN SENSOR | Toggles `bit 6` and keeps the current lid bits (captured with closing still set: `E0` / `A0`) |
+| any button while OFF | No transmission at all |
 
-Observed packets (bytes 10-15, true framing):
+### Captured frames (FIFO bytes + on-air CRC)
 
-| State | Bytes 10-15 |
+| State | Frame |
 |---|---|
-| ON, fan 0, OUT (base) | `80 CF 80 5F 9B A1` |
-| OFF | `20 CF 80 FF AC A6` |
-| ON, fan 10 % / 50 % / 100 % | `80 CF 81 60 37 75` / `80 CF 85 64 73 50` / `80 CF 8A 69 5E 28` |
-| ON, fan 0, IN | `80 CF 00 DF 5F A1` |
-| ON, lid opening | `90 CF 80 6F B9 53` |
-| ON, lid closing | `A0 CF 80 7F CA 0F` |
-| ON, rain detection + closing | `E0 CF 80 BF 71 DF` |
+| ON, fan 0, OUT (base) | `09 5F 18 02 00 0E 80 CF 80 5F 9B A1` |
+| OFF | `09 5F 18 02 00 0E 20 CF 80 FF AC A6` |
+| ON, fan 1..10 | `09 5F 18 02 00 0E 80 CF 8n sum CRC` - see `CAPTURED` in `vent/vent_protocol.py` |
+| ON, fan 10 (100 %) | `09 5F 18 02 00 0E 80 CF 8A 69 5E 08` |
+| ON, fan 0, IN | `09 5F 18 02 00 0E 80 CF 00 DF 5F A9` |
+| ON, lid opening | `09 5F 18 02 00 0E 90 CF 80 6F B9 53` |
+| ON, lid closing | `09 5F 18 02 00 0E A0 CF 80 7F CA 0F` |
+| ON, rain on + closing | `09 5F 18 02 00 0E E0 CF 80 BF 71 DF` |
+
+The earlier nRF24-only decode (before the SPI capture) had a 3-bit framing offset, treated byte 3 (`02`)
+as noise and folded the header into a CRC seed `0x4052`; this table supersedes it.
 
 ### Encoder
 
-Validated against every captured state: exact match, or 1 bit off in the last CRC byte, which is the
-known noisy tail of the nRF24 capture.
-
 ```python
-def crc16(data, crc=0x4052):
+def crc16_kermit(data, crc=0):
     for x in data:
         crc ^= x
         for _ in range(8):
             crc = (crc >> 1) ^ 0x8408 if crc & 1 else crc >> 1
     return crc
 
-def vent_payload(power, rain, closing, opening, direction_out, level):
-    flags = power << 7 | rain << 6 | closing << 5 | opening << 4
-    fan = direction_out << 7 | level            # level 0..10
-    body = [flags, 0xCF, fan, (flags + fan + 0x5F) & 0xFF]
-    c = crc16(body)
-    return HEADER + body + [c & 0xFF, c >> 8]   # HEADER = 51 20 98 51 09 5F 18 00 00 0E
-# e.g. ON, fan 40 %, IN, lid opening -> 90 CF 04 F3 F0 E6
+def air_frame(power, fan_level, fan_out=True, opening=False, closing=False, rain=False):
+    frame = [9, 0x5F, 0x18, 0x02, 0x00, 0x0E,
+             power << 7 | rain << 6 | closing << 5 | opening << 4, 0xCF, fan_out << 7 | fan_level]
+    frame.append(sum(frame) & 0xFF)
+    c = crc16_kermit(frame)
+    return frame + [c & 0xFF, c >> 8]
 ```
+
+To transmit with an LT8920 / LT8900 module: copy U1's register setup (sync word, r32, r41 = B000), write
+bytes 0-9 to the FIFO (the chip appends the CRC) and send the frame ~10x on each of ch 6/26/62/78.
+With an nRF24L01 the whole bit stream (preamble, sync, trailer, frame, CRC, all LSB first) has to be
+built in software, as openmili does for PL1167 remotes.
 
 ### Open points
 
-- Exact packet start, sync-word length, trailer and whether bytes 0-9 contain a length byte. The
-  U1->U2 SPI capture (`u1u2-spi-sniffer.yaml`) shows the LT89xx register setup (r32 preamble/sync/trailer,
-  r36-r39 sync word, r41 CRC flags/seed) and settles this.
-- Whether the remote also transmits on 2409 / 2441 MHz.
-- Confirm ON = `flags 80` / OFF = `flags 20` on the vent itself, and whether the vent needs the
-  original remote ID (bytes 0-9) or accepts a newly paired one.
+- Test on the vent: does it accept a replayed / synthesised frame, and does it need all 4 channels?
+- Whether the vent needs this remote ID (bytes 1-5) or accepts any ID after pairing.
+- Combined states not yet captured (e.g. rain on with lid stopped, IN with fan > 0) - the encoder
+  predicts them, a capture would confirm.
 
 ## Historical: 868 MHz Test Procedure
 
@@ -210,11 +220,14 @@ ASK/OOK and a negative result would not rule out an FSK remote.
 | **Wire to PCB button pads** | Medium | High | Low - solder only, leave PCB intact |
 | **Replace control board** | High | Very high (full PWM control) | High - invasive |
 
-**Recommended path:** RF control. Because every packet carries the complete state, Home Assistant can
-set power, fan level 0-100 %, direction, lid and rain detection directly with one packet, without
-tracking the remote's state. Confirm the header/sync word with the U1->U2 SPI capture first, then
-transmit on 2429 MHz with the encoder above, repeating the packet every ~50 ms for ~200 ms like the
-remote. The original remote keeps working; its LCD will just not reflect changes made from HA.
+**Recommended path (implemented, not yet tested on the vent):** `esphome/config-esp/vent-remote.yaml`
+(ESP32-C3 + nRF24L01, same wiring as the sniffer). The nRF24 runs in ShockBurst-compatible mode
+(no auto-ack, no packet control field, no CRC) with a 3-byte `55 55 55` address that extends the
+preamble; its 17-byte payload carries the LT8920 sync word, trailer, frame and CRC bit for bit
+(`vent_protocol.h`, host-tested against the captured frames and the raw over-the-air bits). Each
+command is sent like the remote: 10 rounds over ch 6/26/62/78. Because every packet carries the
+complete state, HA sets power, fan level, direction, lid and rain detection directly. The original
+remote keeps working; its LCD will just not reflect changes made from HA (and vice versa).
 
 ---
 
@@ -308,7 +321,7 @@ If the log is silent:
 After capturing all codes, create the final ESPHome config. Replace placeholder `'YOUR_CODE_HERE'`
 strings with the actual captured codes.
 
-Proposed file (not yet created): **`esphome/config-esp/vent-remote.yaml`**
+Superseded EV1527 draft (the real `vent-remote.yaml` is now the nRF24 emulator):
 
 ```yaml
 esphome:
@@ -396,44 +409,41 @@ button:
 
 ---
 
-## Home Assistant Integration After Protocol Capture
+## Home Assistant Integration
 
-Once `vent-remote` is adopted into HA via the ESPHome integration, create a fan entity template
-to expose it as a proper HA fan device (speed buttons mapped to percentage steps).
+Flash `vent-remote.yaml` (static IP 10.129.28.204) and add it in HA via the ESPHome integration. It
+creates these entities (all show the last *commanded* state - the vent sends no feedback):
 
-```yaml
-# hass-config/packages/vent.yaml
-fan:
-  - platform: template
-    fans:
-      roof_vent:
-        friendly_name: "Roof Vent"
-        value_template: "{{ is_state('input_boolean.vent_power', 'on') }}"
-        turn_on:
-          service: button.press
-          target:
-            entity_id: button.vent_remote_vent_power
-        turn_off:
-          service: button.press
-          target:
-            entity_id: button.vent_remote_vent_power
-        set_percentage:
-          service: script.vent_set_speed
-          data:
-            percentage: "{{ percentage }}"
-```
+| Entity | Function |
+|---|---|
+| `switch.roof_vent_power` | ON = flags `80`, OFF = flags `20` (exactly the remote's frames) |
+| `fan.roof_vent_fan` | Speed 1-10 (10 % steps), off = level 0; direction forward = OUT, reverse = IN |
+| `cover.roof_vent_lid` | Open / close / stop (opening / closing bit) |
+| `switch.roof_vent_rain_sensor` | Rain detection enabled |
+| `button.roof_vent_resend` | Repeat the last state |
+| `binary_sensor.roof_vent_radio_ok` | nRF24 answered on SPI at boot |
 
-A simple dashboard card:
+Any command except power OFF also switches power on (the remote does not transmit while OFF).
+Commands in the first 5 s after an ESP boot are ignored so entity restores cannot move the vent.
+
+Dashboard card:
 
 ```yaml
 type: entities
 title: Roof Vent
 entities:
-  - entity: button.vent_remote_vent_power
-  - entity: button.vent_remote_vent_speed_up
-  - entity: button.vent_remote_vent_speed_down
-  - entity: button.vent_remote_vent_direction_toggle
+  - switch.roof_vent_power
+  - fan.roof_vent_fan
+  - cover.roof_vent_lid
+  - switch.roof_vent_rain_sensor
+  - button.roof_vent_resend
 ```
+
+First test with the vent: watch `esphome logs /config/vent-remote.yaml`; every command logs
+`TX <frame>`, which must equal the matching frame in `vent/vent_protocol.py`. If the vent ignores it,
+press Resend, then try `channel_offset: "1"` (the original remote's crystal sits ~+1 MHz high), then
+`tx_rounds: "20"`. To check the transmitter without the vent, run `nrf24-sniffer.yaml` on a second
+nRF24 board: it should log `radio CRC OK` with the same frame.
 
 ---
 
@@ -456,8 +466,8 @@ and wire to an ESP32 binary sensor input. This gives HA a `cover` entity with re
   it only sends commands. Use wired reed switch if position feedback is required.
 - **Rain sensor** on the vent operates independently at hardware level — it will still auto-close
   in rain regardless of HA commands (this is the desired safe-default behavior).
-- **Range**: FS1000A at 5V achieves ~10–30 m line-of-sight inside a metal van body; more than
-  sufficient for a van interior.
+- **Range**: the remote itself uses a low PA setting; an nRF24 at 0 dBm covers a van interior. Use a
+  PA+LNA nRF24 module (own 3.3 V LDO) only if the vent sits behind metal.
 - **Interference**: The 433 MHz band is shared (door openers, tyre sensors, weather stations).
   The `repeat: 5` transmit count and EV1527 address matching at the receiver side make false
   triggers extremely unlikely.

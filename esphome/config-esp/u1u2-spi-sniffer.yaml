@@ -91,6 +91,7 @@ substitutions:
   pin_cs: "10"            # LT8920 pin 14 SPI_SS
   pin_pkt: "4"            # LT8920 pin 13 PKT flag; "-1" if not wired (spi mode only)
   spi_mode: "1"           # LT8920 CKPHA = 1 -> CPOL 0 / CPHA 1
+  verbose: "false"        # "true" = every SPI frame; "false" = one decoded block per button press
 
 esphome:
   name: u1u2-spi-sniffer
@@ -103,7 +104,7 @@ esphome:
     then:
       - lambda: >-
           spisniff::begin(std::string("${sniffer_mode}") == "spi", ${pin_clk}, ${pin_data}, ${pin_cs},
-          ${pin_pkt}, ${spi_mode});
+          ${pin_pkt}, ${spi_mode}, ${verbose});
 
 # esp32:
 #   board: esp32-c2-devkitm-1

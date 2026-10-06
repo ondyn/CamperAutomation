@@ -25,6 +25,7 @@ SSH_IDENTITY="${SSH_IDENTITY:-${HOME}/.ssh/camper_automation_rsa}"
 declare -A ESP_HOSTS=(
   ["esphymer"]="10.129.28.200"
   ["hymertest"]="10.129.28.201"
+  ["vent-remote"]="10.129.28.204"
 )
 
 # ── Auto-detect helpers ───────────────────────────────────────────────────────

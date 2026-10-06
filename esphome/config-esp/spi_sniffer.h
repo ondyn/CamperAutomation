@@ -37,6 +37,7 @@ static constexpr int FRAME_MAX = 128;  // bytes; multiple of 4 for DMA
 static constexpr int SHOW_MAX = 40;    // bytes printed per frame
 static constexpr int PKT_MAX = 256;    // LT8920 length byte + up to 255 payload bytes
 static constexpr uint32_t QUIET_MS = 300;
+static constexpr int MAX_DISTINCT = 4;  // different payloads kept per press
 
 enum Kind : uint8_t { SPI_FRAME, PKT_EDGE };
 
@@ -47,8 +48,14 @@ struct Frame {
   uint8_t d[FRAME_MAX];  // SPI: MOSI bytes; PKT_EDGE: d[0] = pin level
 };
 
+struct Payload {
+  uint16_t len{0}, count{0};
+  uint8_t d[PKT_MAX]{};
+};
+
 struct State {
   bool spi{false};
+  bool verbose{false};
   int pins[4]{-1, -1, -1, -1};  // clk, data (MOSI), cs (SS), pkt
   QueueHandle_t q{nullptr};
   uint8_t *buf[NSLOT]{};
@@ -69,6 +76,13 @@ struct State {
   uint32_t fifo_t{0};
   uint16_t fifo_len{0}, prev_len{0};
   uint8_t fifo[PKT_MAX]{}, prev[PKT_MAX]{};
+
+  // compact mode: payloads of the current press, channels used, previous press for the diff
+  Payload dist[MAX_DISTINCT];
+  int ndist{0};
+  uint32_t press_pkts{0}, presses{0};
+  uint64_t chmask[2]{};
+  Payload last_press;
 };
 
 static State s;  // NOLINT(cppcoreguidelines-avoid-non-const-global-variables)
@@ -346,6 +360,89 @@ inline void flush_repeat_() {
   s.repeat = 0;
 }
 
+// LT8920 on-air CRC when r41 CRC is on: CRC-16/KERMIT (reflected 0x8408) seeded with r41[7:0],
+// over length byte + payload, sent low byte first.
+inline uint16_t lt_crc_(const uint8_t *d, int n, uint16_t seed) {
+  uint16_t c = seed;
+  for (int i = 0; i < n; i++) {
+    c ^= d[i];
+    for (int b = 0; b < 8; b++)
+      c = (c & 1) ? (c >> 1) ^ 0x8408 : c >> 1;
+  }
+  return c;
+}
+
+inline void record_packet_() {
+  const unsigned ch = s.regs[7] & 0x7F;
+  s.chmask[ch >> 6] |= 1ULL << (ch & 63);
+  s.press_pkts++;
+  for (int i = 0; i < s.ndist; i++) {
+    Payload &p = s.dist[i];
+    if (p.len == s.fifo_len && memcmp(p.d, s.fifo, s.fifo_len) == 0) {
+      p.count++;
+      return;
+    }
+  }
+  if (s.ndist == MAX_DISTINCT)
+    return;
+  Payload &p = s.dist[s.ndist++];
+  p.len = s.fifo_len;
+  p.count = 1;
+  memcpy(p.d, s.fifo, s.fifo_len);
+}
+
+// Vent layout: [0] len 9, [1..5] remote ID, [6] flags, [7] CF, [8] fan, [9] sum of [0..8].
+inline void print_payload_(const Payload &p) {
+  char hex[3 * SHOW_MAX + 1];
+  hex_(p.d, std::min<int>(p.len, SHOW_MAX), hex, sizeof(hex));
+  const uint16_t crc = lt_crc_(p.d, p.len, s.regs[41] & 0xFF);
+  ESP_LOGW(TAG, "  FIFO %s | on-air CRC %02X %02X  (x%u)", hex, crc & 0xFF, crc >> 8, p.count);
+  if (p.len != 10 || p.d[0] != 9) {
+    ESP_LOGW(TAG, "  (not the 9-byte vent layout - new packet type)");
+    return;
+  }
+  uint8_t sum = 0;
+  for (int i = 0; i < 9; i++)
+    sum += p.d[i];
+  const uint8_t fl = p.d[6], fan = p.d[8];
+  const char *lid = (fl & 0x30) == 0x30 ? "open+close?" : fl & 0x20 ? "CLOSING" : fl & 0x10 ? "OPENING" : "stop";
+  ESP_LOGW(TAG, "  power %s | rain %s | lid %s | fan %s level %u | sum %02X %s%s%s%s", fl & 0x80 ? "ON " : "OFF",
+           fl & 0x40 ? "on " : "off", lid, fan & 0x80 ? "OUT" : "IN ", fan & 0x7F, p.d[9], sum == p.d[9] ? "ok" : "BAD",
+           fl & 0x0F ? " | UNKNOWN flag bits" : "", p.d[7] != 0xCF ? " | byte 7 not CF" : "",
+           (fan & 0x7F) > 10 ? " | fan level > 10" : "");
+}
+
+inline void print_press_() {
+  if (s.ndist == 0)
+    return;
+  s.presses++;
+  char chs[160] = "";
+  size_t off = 0;
+  for (unsigned ch = 0; ch < 128 && off + 12 < sizeof(chs); ch++) {
+    if (s.chmask[ch >> 6] >> (ch & 63) & 1)
+      off += snprintf(chs + off, sizeof(chs) - off, "%s%u(%u)", off ? " " : "", ch, 2402 + ch);
+  }
+  ESP_LOGW(TAG, "=== PRESS %u: %u packets, %d different payload(s), ch(MHz) %s", (unsigned) s.presses,
+           (unsigned) s.press_pkts, s.ndist, chs);
+  for (int i = 0; i < s.ndist; i++)
+    print_payload_(s.dist[i]);
+  const Payload &now = s.dist[s.ndist - 1];
+  if (s.last_press.len) {
+    char diff[200] = "";
+    off = 0;
+    for (int i = 0; i < now.len && off + 12 < sizeof(diff); i++) {
+      if (i >= s.last_press.len || now.d[i] != s.last_press.d[i])
+        off += snprintf(diff + off, sizeof(diff) - off, " b%d %02X>%02X", i,
+                        i < s.last_press.len ? s.last_press.d[i] : 0, now.d[i]);
+    }
+    ESP_LOGI(TAG, "  vs previous press:%s", off ? diff : " identical");
+  }
+  s.last_press = now;
+  s.ndist = 0;
+  s.press_pkts = 0;
+  s.chmask[0] = s.chmask[1] = 0;
+}
+
 // Consecutive r50 writes = one TX packet (FIFO bytes may be split over several SS frames).
 inline void end_fifo_() {
   if (!s.fifo_open)
@@ -355,6 +452,10 @@ inline void end_fifo_() {
   s.last_valid = false;
   s.burst_packets++;
   s.total_packets++;
+  if (!s.verbose) {
+    record_packet_();
+    return;
+  }
   const uint16_t len = s.fifo_len;
   const unsigned ch = s.regs[7] & 0x7F;
   ESP_LOGW(TAG, "+%4u ms  TX PACKET %u B  (last r7: ch %u = %u MHz, %s)", (unsigned) s.fifo_t, len, ch, 2402 + ch,
@@ -385,6 +486,8 @@ inline void pkt_edge_(const Frame &f, uint32_t t) {
   if ((f.d[0] != 0) == active_low)
     return;  // flag went inactive
   s.burst_flags++;
+  if (!s.verbose)
+    return;
   const uint16_t r7 = s.regs[7];
   ESP_LOGI(TAG, "+%4u ms  PKT flag active: %s", (unsigned) t,
            r7 & 0x100  ? "TX packet sent"
@@ -398,7 +501,8 @@ inline void print_config_() {
   bool changed = !s.cfg_printed;
   for (uint8_t a : CFG) {
     mask |= 1ULL << a;
-    changed |= s.regs[a] != s.cfg_shown[a];
+    if (a != 7)  // r7 hops channel on every packet
+      changed |= s.regs[a] != s.cfg_shown[a];
   }
   if (!(s.seen & mask) || !changed)
     return;
@@ -432,8 +536,11 @@ inline void print_config_() {
 inline void end_burst_() {
   end_fifo_();
   flush_repeat_();
-  ESP_LOGI(TAG, "---- quiet: %u frames, %u TX packets, %u FIFO reads, %u PKT flags ----", (unsigned) s.burst_frames,
-           (unsigned) s.burst_packets, (unsigned) s.burst_reads, (unsigned) s.burst_flags);
+  if (s.verbose)
+    ESP_LOGI(TAG, "---- quiet: %u frames, %u TX packets, %u FIFO reads, %u PKT flags ----",
+             (unsigned) s.burst_frames, (unsigned) s.burst_packets, (unsigned) s.burst_reads,
+             (unsigned) s.burst_flags);
+  print_press_();
   print_config_();
   s.in_burst = false;
 }
@@ -445,7 +552,8 @@ inline void handle_frame_(const Frame &f) {
     s.burst_start_ms = f.t_ms;
     s.burst_frames = s.burst_packets = s.burst_reads = s.burst_flags = 0;
     s.last_valid = false;
-    ESP_LOGI(TAG, "---- activity ----");
+    if (s.verbose)
+      ESP_LOGI(TAG, "---- activity ----");
   }
   s.burst_frames++;
   s.last_frame_ms = f.t_ms;
@@ -469,6 +577,16 @@ inline void handle_frame_(const Frame &f) {
   end_fifo_();
   if (n > 0 && f.d[0] == (0x80 | 50))
     s.burst_reads++;
+
+  // compact mode: the per-packet channel / FIFO-pointer writes and r48 status polls are not printed
+  if (!s.verbose && n == 3) {
+    const uint8_t r = f.d[0] & 0x7F;
+    if ((f.d[0] & 0x80) ? r == 48 : (r == 7 || r == 52)) {
+      if (!(f.d[0] & 0x80))
+        s.regs[r] = word_(f, 0);
+      return;
+    }
+  }
 
   if (s.last_valid && f.bits == s.last.bits && memcmp(f.d, s.last.d, n) == 0) {
     s.repeat++;
@@ -518,8 +636,9 @@ inline void handle_frame_(const Frame &f) {
 
 // --- ESPHome entry points ------------------------------------------------------------
 
-inline void begin(bool spi, int clk, int data, int cs, int pkt, int mode) {
+inline void begin(bool spi, int clk, int data, int cs, int pkt, int mode, bool verbose) {
   s.spi = spi;
+  s.verbose = verbose;
   s.pins[0] = clk;
   s.pins[1] = data;
   s.pins[2] = cs;

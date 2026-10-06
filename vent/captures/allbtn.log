@@ -1,0 +1,363 @@
+   0.002 SPI  [cap] port open
+   0.002 NRF  [cap] port open
+   0.105 NRF  ESP-ROM:esp32c3-api1-20210207
+   0.105 NRF  Build:Feb  7 2021
+   0.105 NRF  rst:0x15 (USB_UART_CHIP_RESET),boot:0xd (SPI_FAST_FLASH_BOOT)
+   0.105 NRF  Saved PC:0x4200cde0
+   0.105 SPI  ESP-ROM:esp32c3-api1-20210207
+   0.105 SPI  Build:Feb  7 2021
+   0.105 SPI  rst:0x15 (USB_UART_CHIP_RESET),boot:0xd (SPI_FAST_FLASH_BOOT)
+   0.106 SPI  Saved PC:0x40382fee
+   0.106 SPI  SPIWP:0xee
+   0.106 SPI  mode:DIO, clock div:1
+   0.106 SPI  load:0x3fcd5830,len:0x1574
+   0.106 SPI  load:0x403cbf10,len:0xc7c
+   0.106 SPI  load:0x403ce710,len:0x3004
+   0.106 SPI  entry 0x403cbf1a
+   0.106 SPI  I (24) boot: ESP-IDF v6.0.1 2nd stage bootloader
+   0.106 SPI  I (24) boot: chip revision: v0.4
+   0.106 SPI  I (24) boot: efuse block revision: v1.3
+   0.106 SPI  I (25) boot.esp32c3: SPI Speed      : 80MHz
+   0.106 SPI  I (25) boot.esp32c3: SPI Mode       : DIO
+   0.106 SPI  I (25) boot.esp32c3: SPI Flash Size : 4MB
+   0.106 SPI  I (25) boot: Enabling RNG early entropy source...
+   0.106 SPI  I (25) boot: Partition Table:
+   0.106 SPI  I (25) boot: ## Label            Usage          Type ST Offset   Length
+   0.106 SPI  I (25) boot:  0 otadata          OTA data         01 00 00009000 00002000
+   0.106 SPI  I (26) boot:  1 phy_init         RF data          01 01 0000b000 00001000
+   0.106 SPI  I (26) boot:  2 app0             OTA app          00 10 00010000 001c0000
+   0.106 SPI  I (26) boot:  3 app1             OTA app          00 11 001d0000 001c0000
+   0.106 SPI  I (26) boot:  4 nvs              WiFi data        01 02 00390000 00070000
+   0.106 SPI  I (27) boot: End of partition table
+   0.106 SPI  I (27) esp_image: segment 0: paddr=00010020 vaddr=3c020020 size=0b3a4h ( 45988) map
+   0.106 SPI  I (35) esp_image: segment 1: paddr=0001b3cc vaddr=3fc88a00 size=01f48h (  8008) load
+   0.106 SPI  I (36) esp_image: segment 2: paddr=0001d31c vaddr=40380000 size=02cfch ( 11516) load
+   0.106 SPI  I (39) esp_image: segment 3: paddr=00020020 vaddr=42000020 size=1e604h (124420) map
+   0.106 SPI  I (58) esp_image: segment 4: paddr=0003e62c vaddr=40382cfc size=05ce4h ( 23780) load
+   0.106 SPI  I (63) esp_image: segment 5: paddr=00044318 vaddr=50000000 size=00024h (    36) load
+   0.106 SPI  I (66) boot: Loaded app from partition at offset 0x10000
+   0.106 SPI  I (66) boot: Disabling RNG early entropy source...
+   0.106 NRF  SPIWP:0xee
+   0.106 NRF  mode:DIO, clock div:1
+   0.106 NRF  load:0x3fcd5830,len:0x1574
+   0.106 NRF  load:0x403cbf10,len:0xc7c
+   0.106 NRF  load:0x403ce710,len:0x3004
+   0.106 NRF  entry 0x403cbf1a
+   0.106 NRF  I (24) boot: ESP-IDF v6.0.1 2nd stage bootloader
+   0.106 NRF  I (24) boot: chip revision: v0.4
+   0.106 NRF  I (24) boot: efuse block revision: v1.3
+   0.106 NRF  I (25) boot.esp32c3: SPI Speed      : 80MHz
+   0.106 NRF  I (25) boot.esp32c3: SPI Mode       : DIO
+   0.106 NRF  I (25) boot.esp32c3: SPI Flash Size : 4MB
+   0.106 NRF  I (25) boot: Enabling RNG early entropy source...
+   0.106 NRF  I (25) boot: Partition Table:
+   0.106 NRF  I (25) boot: ## Label            Usage          Type ST Offset   Length
+   0.106 NRF  I (25) boot:  0 otadata          OTA data         01 00 00009000 00002000
+   0.106 NRF  I (26) boot:  1 phy_init         RF data          01 01 0000b000 00001000
+   0.106 NRF  I (26) boot:  2 app0             OTA app          00 10 00010000 001c0000
+   0.106 NRF  I (26) boot:  3 app1             OTA app          00 11 001d0000 001c0000
+   0.106 NRF  I (26) boot:  4 nvs              WiFi data        01 02 00390000 00070000
+   0.106 NRF  I (27) boot: End of partition table
+   0.106 NRF  I (27) esp_image: segment 0: paddr=00010020 vaddr=3c020020 size=0a7fch ( 43004) map
+   0.106 NRF  I (34) esp_image: segment 1: paddr=0001a824 vaddr=3fc88200 size=024a8h (  9384) load
+   0.106 NRF  I (36) esp_image: segment 2: paddr=0001ccd4 vaddr=40380000 size=03344h ( 13124) load
+   0.106 NRF  I (39) esp_image: segment 3: paddr=00020020 vaddr=42000020 size=1d01ch (118812) map
+   0.106 NRF  I (58) esp_image: segment 4: paddr=0003d044 vaddr=40383344 size=04d48h ( 19784) load
+   0.106 NRF  I (61) esp_image: segment 5: paddr=00041d94 vaddr=50000000 size=00024h (    36) load
+   0.106 NRF  I (64) boot: Loaded app from partition at offset 0x10000
+   0.106 NRF  I (64) boot: Disabling RNG early entropy source...
+   0.209 NRF  [I][logger:122]: Log initialized
+   0.209 NRF  [I][app:060]: Running through setup()
+   0.209 NRF  [I][nrf24:960]: ==================================================================
+   0.209 NRF  [I][nrf24:965]:  BUTTON mode on 2429 MHz, 1 Mbps.  Remote 10-30 cm from the nRF24 antenna.
+   0.209 NRF  [I][nrf24:966]:  One line per press: the majority-voted packet, then '^^' under bytes that differ
+   0.209 NRF  [I][nrf24:967]:  from the first press of the same button.  BOOT = next button + comparison table.
+   0.209 NRF  [I][nrf24:973]: ==================================================================
+   0.209 NRF  [W][nrf24:349]: ################################################################
+   0.209 NRF  [W][nrf24:350]:  BUTTON 1/9: [POWER]
+   0.209 NRF  [W][nrf24:351]:  Press it 4-10x, ~2 s apart; note what the remote display / vent does each time.
+   0.209 NRF  [W][nrf24:352]:  BOOT tap = analyse this button + next one.  BOOT hold 2 s = restart this button.
+   0.209 NRF  [W][nrf24:353]: ################################################################
+   0.209 NRF  [I][app:117]: setup() finished successfully!
+   0.209 NRF  [I][app:151]: ESPHome version 2026.8.1 compiled on 2026-10-05 17:38:20 +0200
+   0.209 NRF  [I][app:158]: ESP32 Chip: ESP32-C3 rev0.4, 1 core(s)
+   0.211 SPI  [I][logger:122]: Log initialized
+   0.211 SPI  [I][app:060]: Running through setup()
+   0.211 SPI  [I][u1u2:646]: ==================================================================
+   0.211 SPI  [I][u1u2:700]:  LT8920 SPI sniffer: CLK=GPIO6 MOSI=GPIO7 SS=GPIO10 PKT=GPIO4, SPI mode 1, listen-only.
+   0.211 SPI  [I][u1u2:702]:  One line per SS frame; identical repeats are folded.  [W] lines = TX packets / config.
+   0.211 SPI  [I][u1u2:703]:  Take a remote battery out and back in to capture its start-up config (sync word).
+   0.211 SPI  [I][u1u2:704]: ==================================================================
+   0.211 SPI  [I][app:117]: setup() finished successfully!
+   0.211 SPI  [I][app:151]: ESPHome version 2026.8.1 compiled on 2026-10-05 17:29:45 +0200
+   0.211 SPI  [I][app:158]: ESP32 Chip: ESP32-C3 rev0.4, 1 core(s)
+  15.183 NRF  [I][nrf24:799]: waiting for [POWER] presses | decoded 0 | noise bursts 0 | up 15s
+  30.147 SPI  [I][u1u2:726]: listening | frames 0 | TX packets 0 | dropped 0 | up 30s
+  30.170 NRF  [I][nrf24:799]: waiting for [POWER] presses | decoded 0 | noise bursts 2 | up 30s
+  44.239 SPI  [W][u1u2:425]: === PRESS 1: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+  44.239 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 80 5F | on-air CRC 9B A1  (x40)
+  44.239 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 0 | sum 5F ok
+  44.341 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (9 pkts, q 97%)
+  44.341 NRF  [I][nrf24:523]: Reference framing taken from this press; all packets below are aligned to it.
+  44.341 NRF  [W][nrf24:544]: [POWER ] #1  8B 02 C0 0C 4A F8 C2 00 00 70 00 7C 06 FC DA 0C FC | fan 0% | q 97% 9/9
+  44.341 NRF  [W][component:421]: interval took a long time for an operation (90 ms), max is 50 ms
+  45.277 NRF  [I][nrf24:799]: waiting for [POWER] presses | decoded 1 | noise bursts 2 | up 45s
+  49.316 SPI  [I][u1u2:627]: +   0 ms  r35=4300 SLEEP (wakes on SS low), auto-ack retries 3, whitening seed 00 23 43 00
+  49.627 SPI  [W][u1u2:514]: LT8920 CONFIG  (* = never written by U1, power-up default)
+  49.627 SPI  [W][u1u2:525]:   * r7=011A TX_EN ch 26 = 2428 MHz
+  49.627 SPI  [W][u1u2:525]:   * r44=0100 data rate 1 Mbps
+  49.627 SPI  [W][u1u2:525]:   * r45=0080 modem option (0080/0152 = 1 Mbps, 0552 = slower)
+  49.627 SPI  [W][u1u2:525]:   * r32=1806 preamble 1 B, sync 64 bit, trailer 4 bit, NRZ, no FEC
+  49.627 SPI  [W][u1u2:521]:   * SYNC WORD r39 r38 r37 r36 = 0000 0000 0000 0000  (64 bit, r36 LSB first on air)
+  49.627 SPI  [W][u1u2:525]:   * r41=B800 CRC on, scramble off, length byte on, FIFO-empty ends TX on, auto-ack on, flags active-high, CRC seed 00
+  49.627 SPI  [W][u1u2:525]:     r35=4300 SLEEP (wakes on SS low), auto-ack retries 3, whitening seed 00
+  49.627 SPI  [W][u1u2:525]:   * r40=2107 FIFO empty/full thr 4/4, sync bit errors allowed 6
+  49.627 SPI  [W][u1u2:525]:   * r9=3000 TX power: PA current 3, gain 0
+  49.627 SPI  [I][u1u2:533]:   registers written so far: r35
+  56.129 SPI  [W][u1u2:425]: === PRESS 2: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+  56.129 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 81 60 | on-air CRC 37 71  (x40)
+  56.129 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 1 | sum 60 ok
+  56.129 SPI  [I][u1u2:438]:   vs previous press: b8 80>81 b9 5F>60
+  56.230 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (8 pkts, q 97%)
+  56.230 NRF  [W][nrf24:544]: [POWER ] #2  8B 02 C0 8C 4A F8 C2 00 00 70 00 7C 0E 00 BB 89 FB | fan 10% | q 97% 8/8
+  56.230 NRF  [I][nrf24:567]:          vs #1:  b3 0C>8C  b12 06>0E  b13 FC>00  b14 DA>BB  b15 0C>89  b16 FC>FB
+  58.290 NRF  [W][nrf24:438]: [POWER] radio CRC OK x1/10: 09 5F 18 02 00 0E 80 CF 82 61 D6 4A
+  58.295 SPI  [W][u1u2:425]: === PRESS 3: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+  58.295 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 82 61 | on-air CRC D6 4A  (x40)
+  58.295 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 2 | sum 61 ok
+  58.295 SPI  [I][u1u2:438]:   vs previous press: b8 81>82 b9 60>61
+  58.390 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (10 pkts, q 96%)
+  58.390 NRF  [W][nrf24:544]: [POWER ] #3  8B 02 C0 8C 4A F8 C2 10 00 70 00 7C 16 04 B3 56 FA | fan 20% | q 96% 10/10
+  58.390 NRF  [I][nrf24:567]:          vs #2:  b7 00>10  b12 0E>16  b13 00>04  b14 BB>B3  b15 89>56  b16 FB>FA
+  58.491 NRF  [W][component:421]: interval took a long time for an operation (110 ms), max is 100 ms
+  60.150 SPI  [W][u1u2:425]: === PRESS 4: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+  60.150 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 83 62 | on-air CRC 95 61  (x40)
+  60.150 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 3 | sum 62 ok
+  60.150 SPI  [I][u1u2:438]:   vs previous press: b8 82>83 b9 61>62
+  60.150 SPI  [I][u1u2:726]: listening | frames 1204 | TX packets 160 | dropped 2 | up 60s
+  60.250 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (10 pkts, q 96%)
+  60.250 NRF  [W][nrf24:544]: [POWER ] #4  8B 02 C0 8C 4A F8 C2 00 00 70 00 7C 1E 00 AB 0C FB | fan 30% | q 96% 10/10
+  60.354 NRF  [I][nrf24:567]:          vs #3:  b7 10>00  b12 16>1E  b13 04>00  b14 B3>AB  b15 56>0C  b16 FA>FB
+  60.354 NRF  [I][nrf24:799]: waiting for [POWER] presses | decoded 4 | noise bursts 3 | up 60s
+  62.112 SPI  [W][u1u2:425]: === PRESS 5: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+  62.112 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 84 63 | on-air CRC 14 3D  (x40)
+  62.112 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 4 | sum 63 ok
+  62.112 SPI  [I][u1u2:438]:   vs previous press: b8 83>84 b9 62>63
+  62.194 NRF  [W][nrf24:515]: [POWER] radio voted frame CRC OK (9 pkts): 09 5F 18 02 00 0E 80 CF 84 63 14 3D
+  62.195 NRF  [W][nrf24:544]: [POWER ] #5  8B 02 C1 0C 4A F8 C2 10 00 70 00 7C 26 1C A3 E8 F9 | fan 40% | q 96% 9/9
+  62.195 NRF  [I][nrf24:567]:          vs #4:  b2 C0>C1  b3 8C>0C  b7 00>10  b12 1E>26  b13 00>1C  b14 AB>A3  (+2 more)
+  64.174 SPI  [W][u1u2:425]: === PRESS 6: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+  64.174 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 85 64 | on-air CRC 73 50  (x40)
+  64.174 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 5 | sum 64 ok
+  64.174 SPI  [I][u1u2:438]:   vs previous press: b8 84>85 b9 63>64
+  64.254 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (9 pkts, q 96%)
+  64.254 NRF  [W][nrf24:544]: [POWER ] #6  8B 02 C1 8C 4A F8 C2 10 00 70 00 7C 2E 20 9B 03 FA | fan 50% | q 96% 9/9
+  64.254 NRF  [I][nrf24:567]:          vs #5:  b3 0C>8C  b12 26>2E  b13 1C>20  b14 A3>9B  b15 E8>03  b16 F9>FA
+  66.249 SPI  [W][u1u2:425]: === PRESS 7: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+  66.249 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 86 65 | on-air CRC 92 6B  (x40)
+  66.249 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 6 | sum 65 ok
+  66.249 SPI  [I][u1u2:438]:   vs previous press: b8 85>86 b9 64>65
+  66.317 NRF  [W][nrf24:438]: [POWER] radio CRC OK x1/9: 09 5F 18 02 00 0E 80 CF 86 65 92 6B
+  66.422 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (9 pkts, q 97%)
+  66.422 NRF  [W][nrf24:544]: [POWER ] #7  8B 02 C1 8C 4A F8 C2 00 00 70 00 7C 36 24 93 5C FB | fan 60% | q 97% 9/9
+  66.422 NRF  [I][nrf24:567]:          vs #6:  b7 10>00  b12 2E>36  b13 20>24  b14 9B>93  b15 03>5C  b16 FA>FB
+  68.429 SPI  [W][u1u2:425]: === PRESS 8: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+  68.429 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 87 66 | on-air CRC D1 40  (x40)
+  68.429 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 7 | sum 66 ok
+  68.429 SPI  [I][u1u2:438]:   vs previous press: b8 86>87 b9 65>66
+  68.587 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (8 pkts, q 96%)
+  68.587 NRF  [W][nrf24:544]: [POWER ] #8  8B 02 C0 8C 4A F8 C2 00 00 70 00 7C 3E 30 0B 06 F8 | fan 70% | q 96% 8/8
+  68.587 NRF  [I][nrf24:567]:          vs #7:  b2 C1>C0  b12 36>3E  b13 24>30  b14 93>0B  b15 5C>06  b16 FB>F8
+  70.285 SPI  [W][u1u2:425]: === PRESS 9: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+  70.285 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 88 67 | on-air CRC 90 D2  (x40)
+  70.285 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 8 | sum 67 ok
+  70.285 SPI  [I][u1u2:438]:   vs previous press: b8 87>88 b9 66>67
+  70.455 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (8 pkts, q 96%)
+  70.455 NRF  [W][nrf24:544]: [POWER ] #9  0B 02 C0 0C 4A F8 C2 10 00 70 00 7C 06 3C 03 94 FE | fan 0% | q 96% 8/8
+  70.455 NRF  [I][nrf24:567]:          vs #8:  b0 8B>0B  b3 8C>0C  b7 00>10  b12 3E>06  b13 30>3C  b14 0B>03  (+2 more)
+  72.350 SPI  [W][u1u2:425]: === PRESS 10: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+  72.350 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 89 68 | on-air CRC BF 33  (x40)
+  72.350 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 9 | sum 68 ok
+  72.350 SPI  [I][u1u2:438]:   vs previous press: b8 88>89 b9 67>68
+  72.517 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (8 pkts, q 97%)
+  72.517 NRF  [W][nrf24:544]: [POWER ] #10 8B 02 C0 8C 4A F8 C2 00 00 70 00 7C 4E 40 FB 9D F9 | fan 90% | q 97% 8/8
+  72.517 NRF  [I][nrf24:567]:          vs #9:  b0 0B>8B  b3 0C>8C  b7 10>00  b12 06>4E  b13 3C>40  b14 03>FB  (+2 more)
+  74.308 SPI  [W][u1u2:425]: === PRESS 11: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+  74.308 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 8A 69 | on-air CRC 5E 08  (x40)
+  74.308 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 10 | sum 69 ok
+  74.308 SPI  [I][u1u2:438]:   vs previous press: b8 89>8A b9 68>69
+  74.482 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (10 pkts, q 96%)
+  74.482 NRF  [W][nrf24:544]: [POWER ] #11 0B 02 C0 8C 4A F8 C2 00 00 70 00 7C 56 4C F3 02 F8 | fan 100% | q 96% 10/10
+  74.482 NRF  [I][nrf24:567]:          vs #10:  b0 8B>0B  b12 4E>56  b13 40>4C  b14 FB>F3  b15 9D>02  b16 F9>F8
+  75.310 NRF  [I][nrf24:799]: waiting for [POWER] presses | decoded 11 | noise bursts 5 | up 75s
+  76.583 SPI  [W][u1u2:425]: === PRESS 12: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+  76.583 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 8A 69 | on-air CRC 5E 08  (x40)
+  76.583 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 10 | sum 69 ok
+  76.583 SPI  [I][u1u2:438]:   vs previous press: identical
+  76.757 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (9 pkts, q 97%)
+  76.757 NRF  [W][nrf24:544]: [POWER ] #12 8B 02 C1 8C 4A F8 C2 10 00 70 00 7C 56 4C F3 02 F8 | fan 100% | q 97% 9/9
+  76.757 NRF  [I][nrf24:567]:          vs #11:  b0 0B>8B  b2 C0>C1  b7 00>10
+  78.645 SPI  [W][u1u2:425]: === PRESS 13: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+  78.645 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 8A 69 | on-air CRC 5E 08  (x40)
+  78.645 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 10 | sum 69 ok
+  78.645 SPI  [I][u1u2:438]:   vs previous press: identical
+  78.814 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (9 pkts, q 97%)
+  78.815 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+  81.439 SPI  [W][u1u2:425]: === PRESS 14: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+  81.439 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 89 68 | on-air CRC BF 33  (x40)
+  81.439 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 9 | sum 68 ok
+  81.439 SPI  [I][u1u2:438]:   vs previous press: b8 8A>89 b9 69>68
+  81.479 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (8 pkts, q 97%)
+  81.479 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+  83.498 SPI  [W][u1u2:425]: === PRESS 15: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+  83.498 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 88 67 | on-air CRC 90 D2  (x40)
+  83.498 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 8 | sum 67 ok
+  83.498 SPI  [I][u1u2:438]:   vs previous press: b8 89>88 b9 68>67
+  83.552 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (9 pkts, q 96%)
+  83.552 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+  85.468 SPI  [W][u1u2:425]: === PRESS 16: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+  85.468 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 87 66 | on-air CRC D1 40  (x40)
+  85.468 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 7 | sum 66 ok
+  85.468 SPI  [I][u1u2:438]:   vs previous press: b8 88>87 b9 67>66
+  85.512 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (7 pkts, q 97%)
+  85.512 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+  90.116 SPI  [I][u1u2:726]: listening | frames 4831 | TX packets 640 | dropped 8 | up 90s
+  90.355 NRF  [I][nrf24:799]: waiting for [POWER] presses | decoded 12 | noise bursts 5 | up 90s
+  90.525 SPI  [I][u1u2:627]: +   0 ms  r35=4300 SLEEP (wakes on SS low), auto-ack retries 3, whitening seed 00 23 43 00
+  92.174 SPI  [W][u1u2:425]: === PRESS 17: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+  92.174 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 80 5F | on-air CRC 9B A1  (x40)
+  92.174 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 0 | sum 5F ok
+  92.174 SPI  [I][u1u2:438]:   vs previous press: b8 87>80 b9 66>5F
+  92.324 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (7 pkts, q 97%)
+  92.324 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+  94.448 SPI  [W][u1u2:425]: === PRESS 18: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+  94.448 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 87 66 | on-air CRC D1 40  (x40)
+  94.448 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 7 | sum 66 ok
+  94.448 SPI  [I][u1u2:438]:   vs previous press: b8 80>87 b9 5F>66
+  94.594 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (9 pkts, q 96%)
+  94.594 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+  96.520 SPI  [W][u1u2:425]: === PRESS 19: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+  96.520 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 80 5F | on-air CRC 9B A1  (x40)
+  96.520 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 0 | sum 5F ok
+  96.520 SPI  [I][u1u2:438]:   vs previous press: b8 87>80 b9 66>5F
+  96.664 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (9 pkts, q 97%)
+  96.664 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+ 101.047 SPI  [W][u1u2:425]: === PRESS 20: 38 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+ 101.047 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 00 DF | on-air CRC 5F A9  (x38)
+ 101.047 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan IN  level 0 | sum DF ok
+ 101.047 SPI  [I][u1u2:438]:   vs previous press: b8 80>00 b9 5F>DF
+ 101.107 NRF  [W][nrf24:438]: [POWER] radio CRC OK x1/7: 09 5F 18 02 00 0E 80 CF 00 DF 5F A9
+ 101.212 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (7 pkts, q 97%)
+ 101.212 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+ 102.807 SPI  [W][u1u2:425]: === PRESS 21: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+ 102.807 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 00 DF | on-air CRC 5F A9  (x40)
+ 102.807 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan IN  level 0 | sum DF ok
+ 102.807 SPI  [I][u1u2:438]:   vs previous press: identical
+ 102.962 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (7 pkts, q 97%)
+ 102.962 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+ 105.349 NRF  [I][nrf24:799]: waiting for [POWER] presses | decoded 12 | noise bursts 5 | up 105s
+ 106.512 SPI  [W][u1u2:425]: === PRESS 22: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+ 106.512 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 80 5F | on-air CRC 9B A1  (x40)
+ 106.512 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 0 | sum 5F ok
+ 106.512 SPI  [I][u1u2:438]:   vs previous press: b8 00>80 b9 DF>5F
+ 106.690 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (8 pkts, q 97%)
+ 106.690 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+ 108.779 SPI  [W][u1u2:425]: === PRESS 23: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+ 108.779 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 80 5F | on-air CRC 9B A1  (x40)
+ 108.780 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 0 | sum 5F ok
+ 108.780 SPI  [I][u1u2:438]:   vs previous press: identical
+ 108.967 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (9 pkts, q 96%)
+ 108.968 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+ 113.836 SPI  [I][u1u2:627]: +   0 ms  r35=4300 SLEEP (wakes on SS low), auto-ack retries 3, whitening seed 00 23 43 00
+ 114.840 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (6 pkts, q 97%)
+ 114.840 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+ 114.863 SPI  [W][u1u2:425]: === PRESS 24: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+ 114.863 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 90 CF 80 6F | on-air CRC B9 53  (x40)
+ 114.863 SPI  [W][u1u2:409]:   power ON  | rain off | lid OPENING | fan OUT level 0 | sum 6F ok
+ 114.863 SPI  [I][u1u2:438]:   vs previous press: b6 80>90 b9 5F>6F
+ 117.252 SPI  [W][u1u2:425]: === PRESS 25: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+ 117.252 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 80 5F | on-air CRC 9B A1  (x40)
+ 117.252 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 0 | sum 5F ok
+ 117.252 SPI  [I][u1u2:438]:   vs previous press: b6 90>80 b9 6F>5F
+ 117.420 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (7 pkts, q 97%)
+ 117.420 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+ 119.417 SPI  [W][u1u2:425]: === PRESS 26: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+ 119.417 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 90 CF 80 6F | on-air CRC B9 53  (x40)
+ 119.523 SPI  [W][u1u2:409]:   power ON  | rain off | lid OPENING | fan OUT level 0 | sum 6F ok
+ 119.523 SPI  [I][u1u2:438]:   vs previous press: b6 80>90 b9 5F>6F
+ 119.589 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (7 pkts, q 98%)
+ 119.589 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+ 120.140 SPI  [I][u1u2:726]: listening | frames 7852 | TX packets 1038 | dropped 28 | up 120s
+ 120.413 NRF  [I][nrf24:799]: waiting for [POWER] presses | decoded 12 | noise bursts 5 | up 120s
+ 121.888 SPI  [W][u1u2:425]: === PRESS 27: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+ 121.888 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E A0 CF 80 7F | on-air CRC CA 0F  (x40)
+ 121.888 SPI  [W][u1u2:409]:   power ON  | rain off | lid CLOSING | fan OUT level 0 | sum 7F ok
+ 121.888 SPI  [I][u1u2:438]:   vs previous press: b6 90>A0 b9 6F>7F
+ 122.060 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (9 pkts, q 97%)
+ 122.061 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+ 123.960 SPI  [W][u1u2:425]: === PRESS 28: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+ 123.960 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 80 5F | on-air CRC 9B A1  (x40)
+ 123.960 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 0 | sum 5F ok
+ 123.960 SPI  [I][u1u2:438]:   vs previous press: b6 A0>80 b9 7F>5F
+ 124.124 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (10 pkts, q 97%)
+ 124.124 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+ 126.133 SPI  [W][u1u2:425]: === PRESS 29: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+ 126.133 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E A0 CF 80 7F | on-air CRC CA 0F  (x40)
+ 126.133 SPI  [W][u1u2:409]:   power ON  | rain off | lid CLOSING | fan OUT level 0 | sum 7F ok
+ 126.133 SPI  [I][u1u2:438]:   vs previous press: b6 80>A0 b9 5F>7F
+ 126.289 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (8 pkts, q 97%)
+ 126.289 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+ 131.707 SPI  [W][u1u2:425]: === PRESS 30: 35 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+ 131.707 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E E0 CF 80 BF | on-air CRC 71 DF  (x35)
+ 131.708 SPI  [W][u1u2:409]:   power ON  | rain on  | lid CLOSING | fan OUT level 0 | sum BF ok
+ 131.708 SPI  [I][u1u2:438]:   vs previous press: b6 A0>E0 b9 7F>BF
+ 131.761 NRF  [W][nrf24:438]: [POWER] radio CRC OK x2/7: 09 5F 18 02 00 0E E0 CF 80 BF 71 DF
+ 131.865 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (7 pkts, q 97%)
+ 131.866 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+ 133.774 SPI  [W][u1u2:425]: === PRESS 31: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+ 133.775 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E A0 CF 80 7F | on-air CRC CA 0F  (x40)
+ 133.775 SPI  [W][u1u2:409]:   power ON  | rain off | lid CLOSING | fan OUT level 0 | sum 7F ok
+ 133.775 SPI  [I][u1u2:438]:   vs previous press: b6 E0>A0 b9 BF>7F
+ 133.834 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (8 pkts, q 92%)
+ 133.937 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+ 135.480 NRF  [I][nrf24:799]: waiting for [POWER] presses | decoded 12 | noise bursts 5 | up 135s
+ 135.747 SPI  [W][u1u2:425]: === PRESS 32: 35 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+ 135.747 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E E0 CF 80 BF | on-air CRC 71 DF  (x35)
+ 135.747 SPI  [W][u1u2:409]:   power ON  | rain on  | lid CLOSING | fan OUT level 0 | sum BF ok
+ 135.747 SPI  [I][u1u2:438]:   vs previous press: b6 A0>E0 b9 7F>BF
+ 135.793 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (7 pkts, q 94%)
+ 135.793 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+ 138.948 SPI  [W][u1u2:425]: === PRESS 33: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+ 138.948 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E A0 CF 80 7F | on-air CRC CA 0F  (x40)
+ 138.948 SPI  [W][u1u2:409]:   power ON  | rain off | lid CLOSING | fan OUT level 0 | sum 7F ok
+ 138.948 SPI  [I][u1u2:438]:   vs previous press: b6 E0>A0 b9 BF>7F
+ 138.984 NRF  [W][nrf24:438]: [POWER] radio CRC OK x1/7: 09 5F 18 02 00 0E A0 CF 80 7F CA 0F
+ 139.086 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (7 pkts, q 96%)
+ 139.086 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+ 142.848 SPI  [W][u1u2:425]: === PRESS 34: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+ 142.848 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 20 CF 80 FF | on-air CRC AC A6  (x40)
+ 142.848 SPI  [W][u1u2:409]:   power OFF | rain off | lid CLOSING | fan OUT level 0 | sum FF ok
+ 142.848 SPI  [I][u1u2:438]:   vs previous press: b6 A0>20 b9 7F>FF
+ 143.003 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (5 pkts, q 96%)
+ 143.003 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+ 147.888 SPI  [I][u1u2:627]: +   0 ms  r35=4300 SLEEP (wakes on SS low), auto-ack retries 3, whitening seed 00 23 43 00
+ 150.160 SPI  [I][u1u2:726]: listening | frames 10224 | TX packets 1348 | dropped 34 | up 150s
+ 150.435 NRF  [I][nrf24:799]: waiting for [POWER] presses | decoded 12 | noise bursts 5 | up 150s
+ 161.649 SPI  [I][u1u2:627]: +   0 ms  r35=4300 SLEEP (wakes on SS low), auto-ack retries 3, whitening seed 00 23 43 00
+ 165.423 NRF  [I][nrf24:799]: waiting for [POWER] presses | decoded 12 | noise bursts 6 | up 165s
+ 174.980 SPI  [I][u1u2:627]: +   0 ms  r35=4300 SLEEP (wakes on SS low), auto-ack retries 3, whitening seed 00 23 43 00
+ 177.452 SPI  [W][u1u2:425]: === PRESS 35: 40 packets, 1 different payload(s), ch(MHz) 6(2408) 26(2428) 62(2464) 78(2480)
+ 177.452 SPI  [W][u1u2:399]:   FIFO 09 5F 18 02 00 0E 80 CF 80 5F | on-air CRC 9B A1  (x40)
+ 177.452 SPI  [W][u1u2:409]:   power ON  | rain off | lid stop | fan OUT level 0 | sum 5F ok
+ 177.452 SPI  [I][u1u2:438]:   vs previous press: b6 20>80 b9 FF>5F
+ 177.491 NRF  [I][nrf24:517]: [POWER] radio voted frame: CRC mismatch (8 pkts, q 96%)
+ 177.491 NRF  [W][nrf24:533]: [POWER] already 12 presses stored - tap BOOT to analyse
+ 180.140 SPI  [I][u1u2:726]: listening | frames 10532 | TX packets 1388 | dropped 34 | up 180s
+ 180.493 NRF  [I][nrf24:799]: waiting for [POWER] presses | decoded 12 | noise bursts 8 | up 180s
+ 190.389 SPI  [I][u1u2:627]: +   0 ms  r35=4300 SLEEP (wakes on SS low), auto-ack retries 3, whitening seed 00 23 43 00
+ 195.494 NRF  [I][nrf24:799]: waiting for [POWER] presses | decoded 12 | noise bursts 8 | up 195s
+ 210.146 SPI  [I][u1u2:726]: listening | frames 10533 | TX packets 1388 | dropped 34 | up 210s
+ 210.495 NRF  [I][nrf24:799]: waiting for [POWER] presses | decoded 12 | noise bursts 8 | up 210s
+ 225.511 NRF  [I][nrf24:799]: waiting for [POWER] presses | decoded 12 | noise bursts 8 | up 225s
+ 240.092 SPI  [I][u1u2:726]: listening | frames 10533 | TX packets 1388 | dropped 34 | up 240s
+ 240.467 NRF  [I][nrf24:799]: waiting for [POWER] presses | decoded 12 | noise bursts 8 | up 240s

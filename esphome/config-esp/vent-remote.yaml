@@ -1,0 +1,165 @@
+# ===========================================================================
+# Roof-vent remote emulator -> Home Assistant
+#
+# ESP32-C3 Super Mini + nRF24L01(+) transmit the vent remote's LT8920 frames
+# (protocol: docs/architecture/vent-rf-integration.md, vent_protocol.h).
+# Same board and wiring as nrf24-sniffer.yaml, so the sniffer board can simply
+# be reflashed with this config.
+#
+#   nRF24 pin  ->  ESP32-C3     nRF24 pin  ->  ESP32-C3
+#   1 GND      ->  GND          5 SCK      ->  GPIO4
+#   2 VCC      ->  3V3 (+10uF)  6 MOSI     ->  GPIO6
+#   3 CE       ->  GPIO3        7 MISO     ->  GPIO5
+#   4 CSN      ->  GPIO7        8 IRQ      ->  not connected
+#
+# One-way radio: the vent sends no feedback, so every entity shows the LAST
+# COMMANDED state (assumed state).  The original remote keeps working; after
+# using it, HA's view may be stale until the next command from HA.
+#
+# Entities
+#   switch  Power        ON = flags 80, OFF = flags 20 (as the remote sends)
+#   fan     Fan          speed 1-10 (10 % steps), off = level 0,
+#                        direction forward = OUT (exhaust), reverse = IN
+#   cover   Lid          open / close / stop
+#   switch  Rain sensor  rain detection enabled
+#   button  Resend       repeat the last state (if the vent missed it)
+# Any command except Power OFF also switches power on, like the remote.
+#
+# First test (vent within a few metres):
+#   docker exec -it esphome-esphome-1 esphome run /config/vent-remote.yaml
+#   Log shows "nRF24 ready", then one "TX <frame>" line per command; compare
+#   the frame with the remote's capture in vent/vent_protocol.py.
+#   If the vent does not react: Resend, then try channel_offset "1" (the
+#   original remote's crystal sits ~+1 MHz high), then tx_rounds "20".
+#   Entity commands during the first 5 s after boot are ignored on purpose.
+# ===========================================================================
+
+substitutions:
+  devicename: vent-remote
+  friendly_name: Roof Vent
+  pin_ce: "3"
+  pin_csn: "7"
+  pin_sck: "4"
+  pin_miso: "5"
+  pin_mosi: "6"
+  pin_led: "8"
+  remote_id: "0x5F1802000EULL"  # frame bytes 1-5 of the paired original remote
+  channel_offset: "0"           # MHz added to every hop channel
+  tx_rounds: "10"               # rounds over the 4 channels per command (remote: 10)
+
+esphome:
+  name: ${devicename}
+  friendly_name: ${friendly_name}
+  comment: nRF24L01 emulation of the roof-vent remote (LT8920, 2.4 GHz)
+  includes:
+    - vent_protocol.h
+    - vent_tx.h
+  on_boot:
+    priority: -100
+    then:
+      - lambda: >-
+          vent::begin(${pin_sck}, ${pin_miso}, ${pin_mosi}, ${pin_csn}, ${pin_ce}, ${pin_led},
+          ${channel_offset}, ${tx_rounds}, ${remote_id});
+
+esp32:
+  board: lolin_c3_mini
+  framework:
+    type: esp-idf
+    version: "6.0.1"
+
+logger:
+  level: INFO
+
+api:
+  encryption:
+    key: !secret enc_key
+  reboot_timeout: 0s
+
+mdns:
+  disabled: false
+
+ota:
+  - platform: esphome
+    password: !secret ota_pwd
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  # Static IP to avoid DHCP reassignment on Android hotspot reboot (.200-.203 are taken)
+  manual_ip:
+    static_ip: 10.129.28.204
+    gateway: 10.129.28.1
+    subnet: 255.255.255.0
+    dns1: 10.129.28.1
+  ap:
+    ssid: "Vent Remote Fallback Hotspot"
+    password: !secret ap_pwd
+
+captive_portal:
+
+switch:
+  - platform: template
+    name: Power
+    icon: mdi:power
+    assumed_state: true
+    restore_mode: DISABLED
+    lambda: 'return vent::state().power;'
+    turn_on_action:
+      - lambda: 'vent::set_power(true);'
+    turn_off_action:
+      - lambda: 'vent::set_power(false);'
+
+  - platform: template
+    name: Rain sensor
+    icon: mdi:weather-pouring
+    assumed_state: true
+    restore_mode: DISABLED
+    lambda: 'return vent::state().rain;'
+    turn_on_action:
+      - lambda: 'vent::set_rain(true);'
+    turn_off_action:
+      - lambda: 'vent::set_rain(false);'
+
+fan:
+  - platform: template
+    name: Fan
+    speed_count: 10
+    has_direction: true
+    restore_mode: NO_RESTORE
+    on_state:
+      - lambda: 'vent::set_fan(x->state, x->speed, x->direction == fan::FanDirection::FORWARD);'
+
+cover:
+  - platform: template
+    name: Lid
+    device_class: window
+    optimistic: true
+    assumed_state: true
+    restore_mode: NO_RESTORE
+    open_action:
+      - lambda: 'vent::set_lid(1);'
+    close_action:
+      - lambda: 'vent::set_lid(-1);'
+    stop_action:
+      - lambda: 'vent::set_lid(0);'
+
+button:
+  - platform: template
+    name: Resend
+    icon: mdi:send
+    entity_category: config
+    on_press:
+      - lambda: 'vent::resend();'
+
+binary_sensor:
+  - platform: template
+    name: Radio OK
+    device_class: connectivity
+    entity_category: diagnostic
+    lambda: 'return vent::radio_ok();'
+
+sensor:
+  - platform: wifi_signal
+    name: WiFi signal
+    update_interval: 60s
+    entity_category: diagnostic

@@ -363,7 +363,84 @@ inline uint8_t rev8_(uint8_t x) {
 
 inline int label_w_(uint8_t b) { return static_cast<int>(std::max<size_t>(6, strlen(BUTTONS[b]))); }
 
+// LT8920 frame as configured by the remote (seen on its SPI bus): preamble, 32-bit sync word
+// r36=0516 r39=1982 (bytes 16 05 82 19, each LSB first), 4-bit trailer, length byte, payload,
+// CRC-16/KERMIT over length+payload (low byte first).  All bytes LSB first.
+static const uint8_t SYNC_BYTES[4] = {0x16, 0x05, 0x82, 0x19};
+static constexpr int SYNC_MATCH = 24;  // the nRF24 address match may eat the first sync bits
+static constexpr int MAX_FRAME = 32;
+
+inline uint16_t crc_kermit_(const uint8_t *d, int n) {
+  uint16_t c = 0;
+  for (int i = 0; i < n; i++) {
+    c ^= d[i];
+    for (int b = 0; b < 8; b++)
+      c = (c & 1) ? (c >> 1) ^ 0x8408 : c >> 1;
+  }
+  return c;
+}
+
+// Returns the frame length (len byte + payload + 2 CRC bytes) if a CRC-valid frame is found, else 0.
+inline int decode_frame_(const uint8_t *d, int nbits, uint8_t *out) {
+  int sync[32];
+  for (int i = 0; i < 32; i++)
+    sync[i] = (SYNC_BYTES[i >> 3] >> (i & 7)) & 1;
+  for (int pos = 0; pos <= 96; pos++) {
+    int errors = 0;
+    for (int k = 0; k < SYNC_MATCH && errors <= 1; k++)
+      errors += bit_(d, nbits, pos + k) != sync[32 - SYNC_MATCH + k];
+    if (errors > 1)  // the CRC check below rejects false sync hits
+      continue;
+    const int at = pos + SYNC_MATCH + 4;
+    auto rd = [&](int i) {
+      uint8_t v = 0;
+      for (int b = 0; b < 8; b++)
+        v |= bit_(d, nbits, at + 8 * i + b) << b;
+      return v;
+    };
+    const uint8_t len = rd(0);
+    if (len == 0 || len + 3 > MAX_FRAME)
+      continue;
+    for (int i = 0; i < len + 3; i++)
+      out[i] = rd(i);
+    const uint16_t c = crc_kermit_(out, len + 1);
+    if (out[len + 1] == (c & 0xFF) && out[len + 2] == (c >> 8))
+      return len + 3;
+  }
+  return 0;
+}
+
+// Logs every distinct CRC-valid frame of a burst - exact bytes, no voting needed.
+inline void log_frames_() {
+  uint8_t frames[MAX_BURST][MAX_FRAME];
+  int lens[MAX_BURST], counts[MAX_BURST], nf = 0, ok = 0;
+  for (uint8_t i = 0; i < s.burst_n; i++) {
+    uint8_t f[MAX_FRAME];
+    const int n = decode_frame_(s.burst[i].data, 256, f);
+    if (!n)
+      continue;
+    ok++;
+    int j = 0;
+    while (j < nf && !(lens[j] == n && memcmp(frames[j], f, n) == 0))
+      j++;
+    if (j == nf) {
+      memcpy(frames[nf], f, n);
+      lens[nf] = n;
+      counts[nf++] = 0;
+    }
+    counts[j]++;
+  }
+  if (!ok)
+    return;
+  for (int j = 0; j < nf; j++) {
+    char hex[3 * MAX_FRAME + 1];
+    hex_(frames[j], lens[j], hex, sizeof(hex));
+    ESP_LOGW(TAG, "[%s] radio CRC OK x%d/%u: %s", BUTTONS[s.button], counts[j], s.burst_n, hex);
+  }
+}
+
 inline void analyse_press_() {
+  log_frames_();
   const uint8_t n = s.burst_n;
   s.burst_n = 0;
   int start[MAX_BURST];
@@ -429,6 +506,16 @@ inline void analyse_press_() {
   p.used = used;
   p.total = n;
   p.quality = static_cast<uint8_t>(100.0f * qsum / (used - 1));
+
+  uint8_t frame[MAX_FRAME];
+  const int flen = decode_frame_(p.bits, PKT_BITS, frame);
+  if (flen) {
+    char fhex[3 * MAX_FRAME + 1];
+    hex_(frame, flen, fhex, sizeof(fhex));
+    ESP_LOGW(TAG, "[%s] radio voted frame CRC OK (%u pkts): %s", BUTTONS[s.button], used, fhex);
+  } else {
+    ESP_LOGI(TAG, "[%s] radio voted frame: CRC mismatch (%u pkts, q %u%%)", BUTTONS[s.button], used, p.quality);
+  }
 
   if (!s.have_ref && used >= 3 && p.quality >= 80) {
     memcpy(s.ref, p.bits, PKT_BYTES);

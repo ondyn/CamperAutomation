@@ -111,7 +111,7 @@ substitutions:
   pin_boot: "9"
   # nRF channel to sniff right away (2400 + n MHz); "-1" = scan for it first.
   # 2026-10-05 scan: remote-correlated on 29 (2429 MHz), weaker on 9 and 41.
-  sniff_ch: "29"
+  sniff_ch: "29"        # remote hops LT ch 6/26/62/78 = 2408/2428/2464/2480 MHz; its crystal sits ~+1 MHz, 29 catches most
 
 esphome:
   name: ${devicename}
