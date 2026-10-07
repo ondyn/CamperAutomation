@@ -25,7 +25,7 @@ mdns:
 
 ota:
   - platform: esphome
-    password: "a0e2ffd0b488582e949e1da547ced4fd"
+    password: !secret hymertest_ota_pwd
 
 wifi:
   ssid: !secret wifi_ssid
@@ -45,7 +45,7 @@ wifi:
   # Enable fallback hotspot (captive portal) in case wifi connection fails
   ap:
     ssid: "Hymertest Fallback Hotspot"
-    password: "148t0UNwiBCW"
+    password: !secret hymertest_ap_pwd
 
 captive_portal:
 

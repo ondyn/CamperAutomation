@@ -22,10 +22,12 @@ SSH_PORT="${SSH_PORT:-8022}"
 SSH_IDENTITY="${SSH_IDENTITY:-${HOME}/.ssh/camper_automation_rsa}"
 
 # Known ESP name→IP mapping. Add new boards here as needed.
-declare -A ESP_HOSTS=(
-  ["esphymer"]="10.129.28.200"
-  ["hymertest"]="10.129.28.201"
-  ["vent-remote"]="10.129.28.204"
+# Bash 3.2 (default on macOS) does not support associative arrays,
+# so keep this as name=ip pairs.
+ESP_HOST_PAIRS=(
+  "esphymer=10.129.28.200"
+  "hymertest=10.129.28.201"
+  "vent-remote=10.129.28.204"
 )
 
 # ── Auto-detect helpers ───────────────────────────────────────────────────────
@@ -105,8 +107,9 @@ if not found:
 echo
 
 # ── Patch each known ESP device ───────────────────────────────────────────────
-for esp_name in "${!ESP_HOSTS[@]}"; do
-  target_ip="${ESP_HOSTS[$esp_name]}"
+for pair in "${ESP_HOST_PAIRS[@]}"; do
+  esp_name="${pair%%=*}"
+  target_ip="${pair#*=}"
   echo "Patching '${esp_name}' → ${target_ip} ..."
 
   RESULT="$(ssh_cmd "python3 -c \"

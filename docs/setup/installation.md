@@ -449,29 +449,33 @@ This checks:
 
 ---
 
-## 8) SSH hardening: key-based auth only (optional but recommended)
+## 8) SSH hardening: key auth + LAN/VPN-safe sshd config
 
-After Home Assistant is running, disable password-based SSH login and use key-based auth:
+After Home Assistant is running, deploy your SSH key and the managed sshd config:
 
 ```sh
 cd /Users/ondrejhnyk/Documents/CamperAutomation
-PHONE_HOST=<IP> PHONE_USER=<user> ./provisioning/ssh/30_harden_ssh_key_auth.sh
+SSH_PASSWORD=<termux password> ./provisioning/ssh/30_harden_ssh_key_auth.sh
+# optional: also authorize another device's key, or disable passwords
+./provisioning/ssh/30_harden_ssh_key_auth.sh --pubkey ~/pixel_termux.pub
+./provisioning/ssh/30_harden_ssh_key_auth.sh --disable-password
 ```
+
+`PHONE_HOST` / `PHONE_USER` are auto-detected via ADB when not set. The script is idempotent.
 
 What this does:
 
 - Generates SSH key pair on laptop (or uses existing key).
-- Deploys public key to phone `~/.ssh/authorized_keys`.
-- Disables password authentication in SSH server.
-- Provides safe fallback login method if hotspot fails.
+- Adds the public key(s) to phone `~/.ssh/authorized_keys` without duplicates.
+- Writes `$PREFIX/etc/ssh/sshd_config.d/10-camper.conf` (Termux sshd does not read `~/.termux/sshd_config`), validates it with `sshd -t`, and restarts only the sshd listener.
+- Keeps password auth enabled by default; `--disable-password` only applies if key login works.
 
-Security benefits:
+Tailscale VPN note:
 
-- No password transmitted over network even on VPN.
-- Key rotation is easier than password management.
-- Reduces attack surface if VPN is ever breached.
-
----
+- Tailscale runs in userspace-networking mode, so tailscaled proxies every tailnet SSH connection to `127.0.0.1:8022`. sshd sees all VPN peers as `127.0.0.1`.
+- OpenSSH >= 9.8 `PerSourcePenalties` would therefore lock out *all* VPN clients after one peer's failed/aborted login. The managed config sets `PerSourcePenaltyExemptList 127.0.0.1/32,::1/128`.
+- Source-IP rules in sshd cannot distinguish tailnet peers; restrict which devices may reach the phone in the Tailscale admin ACL.
+- `ClientAliveInterval 30` reaps sessions whose VPN/hotspot path died.
 
 ## 9) Tailscale VPN setup
 
