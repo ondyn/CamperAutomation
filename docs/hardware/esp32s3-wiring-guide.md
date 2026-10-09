@@ -43,23 +43,24 @@ Usable, unconstrained: **GPIO1–18, 21, 39–42, 47** (plus whichever of 38/48 
 | GPIO8  | I/O    | I2C SDA                        | BME280 0x76, INA219 0x40, VL6180X 0x29 | Shared bus `bus_a`                        |
 | GPIO9  | I/O    | I2C SCL                        | same bus                            |                                              |
 | GPIO10 | IN/OD  | 1-Wire data                    | DS18B20 ×3                          | 4.7 kΩ pull-up to 3.3 V required             |
-| GPIO12 | IN     | Fresh water 25 %               | Probe electrode                     | Pull-up during sample only; LOW = wet        |
-| GPIO13 | IN     | Fresh water 50 %               | Probe electrode                     | Pull-up during sample only; LOW = wet        |
-| GPIO14 | IN     | Fresh water 75 %               | Probe electrode                     | Pull-up during sample only; LOW = wet        |
-| GPIO15 | IN     | Fresh water 100 %              | Probe electrode                     | Pull-up during sample only; LOW = wet        |
+| GPIO11 | OUT    | Fresh water probe common       | Fresh tank probe rail               | Pulsed HIGH ~25 ms per sample (anti-corrosion)|
+| GPIO12 | IN     | Fresh water 25 %               | Probe electrode                     | Internal pull-down                           |
+| GPIO13 | IN     | Fresh water 50 %               | Probe electrode                     | Internal pull-down                           |
+| GPIO14 | IN     | Fresh water 75 %               | Probe electrode                     | Internal pull-down                           |
+| GPIO15 | IN     | Fresh water 100 %              | Probe electrode                     | Internal pull-down                           |
 | GPIO16 | OUT    | Phone charger control          | P-MOS + PC817 optocoupler           | `inverted: true`, fail-safe OFF at reset     |
 | GPIO17 | OUT    | LIN UART TX → transceiver RXD  | Truma iNetBox                       | UART1, 9600 8N2                              |
 | GPIO18 | IN     | LIN UART RX ← transceiver TXD  | Truma iNetBox                       |                                              |
-| GPIO39 | IN     | Waste water 25 %               | Probe electrode                     | JTAG MTCK; pull-up during sample only        |
-| GPIO40 | IN     | Waste water 50 %               | Probe electrode                     | JTAG MTDO; pull-up during sample only        |
-| GPIO41 | IN     | Waste water 75 %               | Probe electrode                     | JTAG MTDI; pull-up during sample only        |
-| GPIO42 | IN     | Waste water 100 %              | Probe electrode                     | JTAG MTMS; pull-up during sample only        |
+| GPIO21 | OUT    | Waste water probe common       | Waste tank probe rail               | Pulsed HIGH ~25 ms per sample                |
+| GPIO39 | IN     | Waste water 25 %               | Probe electrode                     | JTAG MTCK, free as GPIO                      |
+| GPIO40 | IN     | Waste water 50 %               | Probe electrode                     | JTAG MTDO, free as GPIO                      |
+| GPIO41 | IN     | Waste water 75 %               | Probe electrode                     | JTAG MTDI, free as GPIO                      |
+| GPIO42 | IN     | Waste water 100 %              | Probe electrode                     | JTAG MTMS, free as GPIO                      |
 | GPIO48 | OUT    | Onboard WS2812 status LED      | On-module RGB LED                   | v1.0 = 48, v1.1 = 38 — `status_led_pin` sub  |
 | GPIO43 | OUT    | Console TX (logger)            | CH343 bridge                        | Reserved                                     |
 | GPIO44 | IN     | Console RX                     | CH343 bridge                        | Reserved                                     |
 
-**Free for expansion:** GPIO11 and GPIO21 (tank common probes now connect to GND).
-GPIO1, 2, 6, 7 (former ADC1-reserved pins), GPIO47, GPIO38
+**Free for expansion:** none. GPIO1, 2, 6, 7 (former ADC1-reserved pins), GPIO47, GPIO38
 (RGB LED alternate, free while the LED is on 48), and both native-USB pins GPIO19/20 are
 now all assigned below.
 
@@ -85,8 +86,8 @@ now all assigned below.
 - **LIN moved off UART0.** On the C3 the LIN bus sat on GPIO20/21, which *is* UART0 — that
   is why `logger:` had to be disabled there. On the S3 the LIN bus uses UART1 on GPIO17/18,
   so the serial console and remote debugging are available again.
-- **Each tank gets a contiguous sensing block** (fresh 12–15, waste 39–42) plus GND —
-  one 5-way connector and one ribbon run per tank. Waste sits on the JTAG-capable pins because those carry no
+- **Each tank gets a contiguous block** (fresh 11–15, waste 21 + 39–42) — one 5-way connector
+  and one ribbon run per tank. Waste sits on the JTAG-capable pins because those carry no
   ADC and no boot-time function: the least valuable pins go to the least demanding load.
 - **Actuator (GPIO16) sits next to the LIN pins**, away from the input blocks, to keep the
   switched charger line physically separate from the high-impedance probe inputs.
@@ -210,37 +211,32 @@ Pinout with dome facing you: `[GND] [OUT] [VCC]`
 ## Feature 4 — Fresh / Waste Water Level (4-step conductive probes)
 
 Each tank has four stainless electrodes at 25 / 50 / 75 / 100 % height plus one common
-electrode at the bottom. Connect both common electrodes directly to board GND, not a
-GPIO. The sensing pins are high-impedance inputs with no pulls between samples. Every
-second, their internal pull-ups are enabled for ~25 ms, then the pins are read directly
-and returned to high-impedance before publishing. A wetted electrode reads LOW through
-the grounded common; an uncovered electrode reads HIGH. This limits DC current and
-reduces electrolysis and electrode corrosion without using common-drive GPIOs.
+electrode at the bottom. The common electrode is driven HIGH only for ~25 ms during a
+sample, then returned LOW — this avoids continuous DC through the water and the resulting
+electrolysis and electrode corrosion. The two tanks are sampled sequentially so the rails
+cannot couple through the van chassis.
 
 ```
 ESP32-S3-DevKitC-1        Fresh tank            Waste tank
 ──────────────────         ─────────────         ─────────────
-GND ───────────────────── Common (bottom)
+GPIO11 ────────────────── Common (bottom)
 GPIO12 ────────────────── 25 %
 GPIO13 ────────────────── 50 %
 GPIO14 ────────────────── 75 %
 GPIO15 ────────────────── 100 %
-GND ────────────────────────────────────────── Common (bottom)
+GPIO21 ─────────────────────────────────────── Common (bottom)
 GPIO39 ─────────────────────────────────────── 25 %
 GPIO40 ─────────────────────────────────────── 50 %
 GPIO41 ─────────────────────────────────────── 75 %
 GPIO42 ─────────────────────────────────────── 100 %
 ```
 
-- No external resistors required — do not add permanent pull-ups to the probe lines.
-- GPIO11 and GPIO21 are now free. Disconnect the common wires from these pins and
-  reconnect them to GND before using the new firmware. To roll back, restore both
-  the previous firmware and the original common-probe wiring.
+- No external resistors required — the level inputs use internal pull-downs, so an
+  uncovered electrode reads LOW.
 - Keep probe wiring away from the LIN and charger lines; long runs pick up noise on
   high-impedance inputs.
-- Sampling is driven by `sample_fresh_water_level` and `sample_waste_water_level`,
-  each at a 1 s interval. Level and full entities retain their existing names and
-  publish only when their values change.
+- Sampling is driven by `script: sample_water_levels` (1 s interval, on boot, and on
+  HA client connect).
 
 ---
 
@@ -475,8 +471,7 @@ harness is longer than ~30 cm).
 |---------------|------------|-------------------|---------|--------------------|
 | DS18B20 data  | GPIO10     | Recommended       | 4.7 kΩ  | GPIO10 ↔ 3.3 V     |
 | I2C SDA/SCL   | GPIO8/9    | Internal (ESPHome)| ~4.7 kΩ | auto               |
-| Fresh probes  | GPIO12–15  | Internal pull-up during sample only | — | auto       |
-| Waste probes  | GPIO39–42  | Internal pull-up during sample only | — | auto       |
+| Water probes  | GPIO12–15  | Internal pull-down| —       | auto               |
 | PIR OUT       | GPIO4      | None              | —       | actively driven    |
 | Charger ctrl  | GPIO16     | On P-MOS board    | —       | —                  |
 
@@ -492,9 +487,6 @@ harness is longer than ~30 cm).
 - [ ] `CP Plus alive` = ON and Truma room/water temperatures populate
 - [ ] PIR toggles on hand wave
 - [ ] Fresh and Waste Water Level step 0 → 25 → 50 → 75 → 100 % as electrodes are shorted to common
-- [ ] Both tank commons connect to GND; GPIO11 and GPIO21 are disconnected from probes
-- [ ] Probe pull-ups are active only for ~25 ms per 1 s sample; inputs have no pulls between samples
-- [ ] Fresh/Waste Tank Full is ON only when the 100 % electrode is wetted or shorted to GND
 - [ ] Phone Charger switch toggles the load and is OFF after a reboot
 - [ ] Battery Current is negative under load and positive while charging
 - [ ] Rain Detected flips when the plate is wetted; tune `Rain Threshold` from HA
@@ -516,5 +508,5 @@ harness is longer than ~30 cm).
 | DS18B20 reads −127 °C | Missing/wrong pull-up | 4.7 kΩ between GPIO10 and 3.3 V |
 | Truma shows no data | LIN wiring/level or swapped TX/RX | Verify 9600 8N2 and transceiver polarity |
 | PIR always ON | Powered from 3.3 V | Move VCC to the 5 V rail |
-| Water level stuck at 0 % | Common probe not grounded or electrodes not wetted | Check common-to-GND wiring and probe continuity |
+| Water level stuck at 0 % | Common probe not driven or electrodes not wetted | Check GPIO11 wiring and probe continuity |
 | Charger always ON | Inverted logic mismatch | Check opto polarity / drop `inverted: true` |

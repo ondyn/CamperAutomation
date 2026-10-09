@@ -36,14 +36,13 @@ packages:
   # Water pump enable, active-low N-MOS drive (GPIO47, output).
   water_pump:    !include peripherals/water_pump.yaml
 
-  # Tank common probes connect directly to GND, freeing GPIO11 and GPIO21.
-  # Sense pins are high-impedance except during the brief pull-up measurement.
   fresh_water: !include
     file: peripherals/water_tank.yaml
     vars:
       tank_id: fresh_water
       tank_name: Fresh Water
       full_device_class: moisture
+      pin_common: GPIO11
       pin_25: GPIO12
       pin_50: GPIO13
       pin_75: GPIO14
@@ -55,6 +54,7 @@ packages:
       tank_id: waste_water
       tank_name: Waste Water
       full_device_class: problem
+      pin_common: GPIO21
       pin_25: GPIO39
       pin_50: GPIO40
       pin_75: GPIO41
