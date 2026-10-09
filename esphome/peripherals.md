@@ -10,7 +10,7 @@ sensors and actuators:
 - truma_inetbox
 - phone charger driver (io pin to turn on/off phone charger). Phone is used as Homeassistant server.
 - PIR motion detection sensor
-- fresh and waste water sensors - each has 5 pins, one common and 4 used for level detection
+- fresh and waste water sensors - each has 5 electrodes: one common connected to GND and 4 GPIO inputs for level detection, with pull-ups enabled only during sampling
 - accelerometer MPU6050 will NOT be used (we will use phone`s sensor to detect pitch and roll)
 - INA219 I2C bi-directional battery power monitoring, using schunt
 - rain detector - using ADC with selectable threshold for rain (set from homeassistant)
