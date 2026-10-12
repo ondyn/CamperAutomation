@@ -1,7 +1,7 @@
 #pragma once
 /*
  * Roof-vent remote emulator: an nRF24L01(+) on an ESP32-C3 transmits the remote's LT8920 frames.
- * Protocol in vent_protocol.h; wiring and entities in vent-remote.yaml.
+ * Protocol in vent_protocol.h; wiring and entities in peripherals/vent_remote.yaml.
  *
  * The nRF24 runs in ShockBurst-compatible mode (no auto-ack, no packet control field, no CRC): it sends
  * its 0x55 preamble, a 3-byte 0x55 address and a 17-byte payload that holds the LT8920 sync word,
@@ -169,7 +169,7 @@ inline void task_(void *) {
   }
 }
 
-// --- API for vent-remote.yaml -------------------------------------------------------------------
+// --- API for peripherals/vent_remote.yaml --------------------------------------------------------
 
 inline void begin(int sck, int miso, int mosi, int csn, int ce, int led, int ch_offset, int rounds,
                   uint64_t remote_id) {

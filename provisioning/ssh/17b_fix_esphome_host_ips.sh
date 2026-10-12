@@ -10,6 +10,7 @@ set -euo pipefail
 # ESP boards must already use manual_ip in their ESPHome config (done via code):
 #   esphymer    → 10.129.28.200
 #   hymertest   → 10.129.28.201
+#   esphymer2   → 10.129.28.205
 #
 # Usage (phone connected via USB or reachable over Tailscale):
 #   PHONE_HOST=<ip>  PHONE_USER=u0_aXXX ./provisioning/ssh/17b_fix_esphome_host_ips.sh
@@ -27,7 +28,7 @@ SSH_IDENTITY="${SSH_IDENTITY:-${HOME}/.ssh/camper_automation_rsa}"
 ESP_HOST_PAIRS=(
   "esphymer=10.129.28.200"
   "hymertest=10.129.28.201"
-  "vent-remote=10.129.28.204"
+  "esphymer2=10.129.28.205"
 )
 
 # ── Auto-detect helpers ───────────────────────────────────────────────────────
@@ -156,7 +157,7 @@ echo
 echo "=== Verification ==="
 echo "After HA restarts, check ESPHome device status in HA."
 echo "ESP connectivity test from phone:"
-echo "  ssh ${PHONE_USER}@${PHONE_HOST} -p ${SSH_PORT} 'ping -c3 10.129.28.200 && ping -c3 10.129.28.201'"
+echo "  ssh ${PHONE_USER}@${PHONE_HOST} -p ${SSH_PORT} 'ping -c3 10.129.28.200 && ping -c3 10.129.28.201 && ping -c3 10.129.28.205'"
 echo
 echo "To verify AP subnet is pinned:"
 echo "  adb shell su -c 'ip -4 addr show wlan1'"

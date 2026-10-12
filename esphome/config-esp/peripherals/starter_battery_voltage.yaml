@@ -1,0 +1,36 @@
+# Voltage-only INA226 on the shared I2C bus, separate from the INA219 at 0x40.
+# Protected sense wiring: docs/hardware/esp32s3-wiring-guide.md.
+sensor:
+  - platform: ina226
+    id: starter_battery_ina226
+    i2c_id: bus_a
+    address: 0x41
+    update_interval: 5s
+    adc_time: 1100us
+    adc_averaging: 16
+    bus_voltage:
+      id: starter_battery_voltage
+      name: "Starter Battery Voltage"
+      accuracy_decimals: 2
+      filters:
+        - lambda: |-
+            const bool overrange = x >= 18.0f || x < 0.0f;
+            id(starter_battery_voltage_out_of_range).publish_state(overrange);
+            if (overrange) {
+              ESP_LOGW("starter_battery", "INA226 outside sense range: %.3f V; check battery and wiring", x);
+              return NAN;
+            }
+            return x;
+        - timeout: 20s
+
+binary_sensor:
+  - platform: template
+    id: starter_battery_voltage_out_of_range
+    name: "Starter Battery Voltage Out of Range"
+    device_class: problem
+    entity_category: diagnostic
+
+interval:
+  - interval: 15s
+    then:
+      - lambda: 'if (id(report_fault)) id(report_fault)("Starter battery INA226", id(starter_battery_ina226));'

@@ -6,19 +6,15 @@
 # ==============================================================================
 # ESPHome has no in-file conditionals, so each subsystem lives in its own file
 # under peripherals/ and is switched here. Everything below this block is the
-# core the node cannot run without: board, radio, API, status LED, diagnostics.
+# core this node cannot run without: board, radio, API, status LED, diagnostics.
 packages:
   temperature:   !include peripherals/temperature_dallas.yaml
-  # bme280:        !include peripherals/bme280.yaml
   truma:         !include peripherals/truma.yaml
   # truma:       !include peripherals/truma_cpplus_lowlatency_diag.yaml
   # truma:       !include peripherals/truma_commander_experimental.yaml
   pir:           !include peripherals/pir.yaml
   phone_charger: !include peripherals/phone_charger.yaml
-  # battery:       !include peripherals/battery_ina219.yaml
   rain:          !include peripherals/rain.yaml
-  # VL6180X pulls a third-party component from GitHub at build time — off until wired.
-  # range:       !include peripherals/range_vl6180x.yaml
 
   # EBL30 electroblock 12V power toggle: GPIO38 = "turn ON" pulse line (A11),
   # GPIO19 = "turn OFF" pulse line (A12, repurposed native-USB D- pin — this board
@@ -28,9 +24,8 @@ packages:
   # Gas bottle primary/secondary switch (GPIO1, input) + gas valve heater (GPIO7, output).
   gas_system:    !include peripherals/gas_system.yaml
 
-  # 12V supply present (GPIO2, input), mains 230V connected (GPIO6, input), and car D+
-  # engine-running (GPIO20, input, repurposed native-USB D+ pin — see wiring guide),
-  # all via optocoupler.
+  # 12V supply present (GPIO2, input) and mains 230V connected (GPIO6, input),
+  # both via optocoupler. Engine D+ is wired to esphymer2 instead.
   power_status:  !include peripherals/power_status.yaml
 
   # Water pump enable, active-low N-MOS drive (GPIO47, output).
@@ -168,12 +163,6 @@ globals:
     type: std::function<void(const char *, esphome::Component *)>
     restore_value: no
 
-i2c:
-  sda: GPIO8
-  scl: GPIO9
-  scan: true
-  id: bus_a
-
 # Onboard WS2812 status LED. Kept internal: the pattern generator below owns it, and
 # Home Assistant steers it through the notification select + brightness number instead.
 light:
@@ -253,10 +242,6 @@ text_sensor:
       return out;
 
 interval:
-  - interval: 15s
-    then:
-      - lambda: 'if (id(report_fault)) id(report_fault)("I2C", id(bus_a));'
-
   # Status LED pattern generator.
   #
   #   Source   State                     Colour    Pattern

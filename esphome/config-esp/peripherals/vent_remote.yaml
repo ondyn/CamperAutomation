@@ -3,8 +3,7 @@
 #
 # ESP32-C3 Super Mini + nRF24L01(+) transmit the vent remote's LT8920 frames
 # (protocol: docs/architecture/vent-rf-integration.md, vent_protocol.h).
-# Same board and wiring as nrf24-sniffer.yaml, so the sniffer board can simply
-# be reflashed with this config.
+# Included by esphymer2.yaml; no separate vent-remote node.
 #
 #   nRF24 pin  ->  ESP32-C3     nRF24 pin  ->  ESP32-C3
 #   1 GND      ->  GND          5 SCK      ->  GPIO4
@@ -26,7 +25,7 @@
 # Any command except Power OFF also switches power on, like the remote.
 #
 # First test (vent within a few metres):
-#   docker exec -it esphome-esphome-1 esphome run /config/vent-remote.yaml
+#   esphome run esphome/config-esp/esphymer2.yaml
 #   Log shows "nRF24 ready", then one "TX <frame>" line per command; compare
 #   the frame with the remote's capture in vent/vent_protocol.py.
 #   If the vent does not react: Resend, then try channel_offset "1" (the
@@ -35,8 +34,6 @@
 # ===========================================================================
 
 substitutions:
-  devicename: vent-remote
-  friendly_name: Roof Vent
   pin_ce: "3"
   pin_csn: "7"
   pin_sck: "4"
@@ -48,9 +45,6 @@ substitutions:
   tx_rounds: "10"               # rounds over the 4 channels per command (remote: 10)
 
 esphome:
-  name: ${devicename}
-  friendly_name: ${friendly_name}
-  comment: nRF24L01 emulation of the roof-vent remote (LT8920, 2.4 GHz)
   includes:
     - vent_protocol.h
     - vent_tx.h
@@ -61,45 +55,9 @@ esphome:
           vent::begin(${pin_sck}, ${pin_miso}, ${pin_mosi}, ${pin_csn}, ${pin_ce}, ${pin_led},
           ${channel_offset}, ${tx_rounds}, ${remote_id});
 
-esp32:
-  board: lolin_c3_mini
-  framework:
-    type: esp-idf
-    version: "6.0.1"
-
-logger:
-  level: INFO
-
-api:
-  encryption:
-    key: !secret enc_key
-  reboot_timeout: 0s
-
-mdns:
-  disabled: false
-
-ota:
-  - platform: esphome
-    password: !secret ota_pwd
-
-wifi:
-  ssid: !secret wifi_ssid
-  password: !secret wifi_password
-  # Static IP to avoid DHCP reassignment on Android hotspot reboot (.200-.203 are taken)
-  manual_ip:
-    static_ip: 10.129.28.204
-    gateway: 10.129.28.1
-    subnet: 255.255.255.0
-    dns1: 10.129.28.1
-  ap:
-    ssid: "Vent Remote Fallback Hotspot"
-    password: !secret ap_pwd
-
-captive_portal:
-
 switch:
   - platform: template
-    name: Power
+    name: Roof Vent Power
     icon: mdi:power
     assumed_state: true
     restore_mode: DISABLED
@@ -110,7 +68,7 @@ switch:
       - lambda: 'vent::set_power(false);'
 
   - platform: template
-    name: Rain sensor
+    name: Roof Vent Rain Sensor
     icon: mdi:weather-pouring
     assumed_state: true
     restore_mode: DISABLED
@@ -122,7 +80,7 @@ switch:
 
 fan:
   - platform: template
-    name: Fan
+    name: Roof Vent Fan
     speed_count: 10
     has_direction: true
     restore_mode: NO_RESTORE
@@ -131,7 +89,7 @@ fan:
 
 cover:
   - platform: template
-    name: Lid
+    name: Roof Vent Lid
     device_class: window
     optimistic: true
     assumed_state: true
@@ -145,7 +103,7 @@ cover:
 
 button:
   - platform: template
-    name: Resend
+    name: Roof Vent Resend
     icon: mdi:send
     entity_category: config
     on_press:
@@ -153,7 +111,7 @@ button:
 
 binary_sensor:
   - platform: template
-    name: Radio OK
+    name: Roof Vent Radio OK
     device_class: connectivity
     entity_category: diagnostic
     lambda: 'return vent::radio_ok();'

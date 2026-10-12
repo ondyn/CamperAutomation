@@ -220,8 +220,14 @@ ASK/OOK and a negative result would not rule out an FSK remote.
 | **Wire to PCB button pads** | Medium | High | Low - solder only, leave PCB intact |
 | **Replace control board** | High | Very high (full PWM control) | High - invasive |
 
-**Recommended path (implemented, not yet tested on the vent):** `esphome/config-esp/vent-remote.yaml`
-(ESP32-C3 + nRF24L01, same wiring as the sniffer). The nRF24 runs in ShockBurst-compatible mode
+**Recommended path (implemented, not yet tested on the vent):**
+[`esphome/config-esp/esphymer2.yaml`](../../esphome/config-esp/esphymer2.yaml), including
+[`peripherals/vent_remote.yaml`](../../esphome/config-esp/peripherals/vent_remote.yaml).
+The existing ESP32-C3 Super Mini + nRF24L01 controller is extended with BME280,
+INA219, starter-battery INA226, VL6180X, D+ and T2/T3; **no separate vent-remote board**.
+Radio wiring remains the same as the sniffer, while I2C uses GPIO0/1, Dallas GPIO10,
+and D+ GPIO20. See [wiring and migration](../hardware/esp32s3-wiring-guide.md#second-node--esp32-c3-super-mini).
+The nRF24 runs in ShockBurst-compatible mode
 (no auto-ack, no packet control field, no CRC) with a 3-byte `55 55 55` address that extends the
 preamble; its 17-byte payload carries the LT8920 sync word, trailer, frame and CRC bit for bit
 (`vent_protocol.h`, host-tested against the captured frames and the raw over-the-air bits). Each
@@ -321,7 +327,8 @@ If the log is silent:
 After capturing all codes, create the final ESPHome config. Replace placeholder `'YOUR_CODE_HERE'`
 strings with the actual captured codes.
 
-Superseded EV1527 draft (the real `vent-remote.yaml` is now the nRF24 emulator):
+Superseded EV1527 draft (the active nRF24 emulator is now a package in `esphymer2.yaml`;
+the device name below belongs only to this historical draft):
 
 ```yaml
 esphome:
@@ -411,17 +418,22 @@ button:
 
 ## Home Assistant Integration
 
-Flash `vent-remote.yaml` (static IP 10.129.28.204) and add it in HA via the ESPHome integration. It
-creates these entities (all show the last *commanded* state - the vent sends no feedback):
+Flash `esphymer2.yaml` to the existing C3 controller over USB and add/reconfigure
+**esphymer2 at 10.129.28.205** via the ESPHome integration. The former standalone
+`vent-remote.yaml` is replaced by the included `peripherals/vent_remote.yaml`;
+10.129.28.204 is no longer used for vent control. After verification, remove the old
+HA device entry and update dashboards/automations. The table lists expected default
+entity IDs; confirm the actual IDs assigned by HA, particularly after migration.
+All control entities show the last *commanded* state - the vent sends no feedback:
 
 | Entity | Function |
 |---|---|
-| `switch.roof_vent_power` | ON = flags `80`, OFF = flags `20` (exactly the remote's frames) |
-| `fan.roof_vent_fan` | Speed 1-10 (10 % steps), off = level 0; direction forward = OUT, reverse = IN |
-| `cover.roof_vent_lid` | Open / close / stop (opening / closing bit) |
-| `switch.roof_vent_rain_sensor` | Rain detection enabled |
-| `button.roof_vent_resend` | Repeat the last state |
-| `binary_sensor.roof_vent_radio_ok` | nRF24 answered on SPI at boot |
+| `switch.esphymer2_roof_vent_power` | ON = flags `80`, OFF = flags `20` (exactly the remote's frames) |
+| `fan.esphymer2_roof_vent_fan` | Speed 1-10 (10 % steps), off = level 0; direction forward = OUT, reverse = IN |
+| `cover.esphymer2_roof_vent_lid` | Open / close / stop (opening / closing bit) |
+| `switch.esphymer2_roof_vent_rain_sensor` | Rain detection enabled |
+| `button.esphymer2_roof_vent_resend` | Repeat the last state |
+| `binary_sensor.esphymer2_roof_vent_radio_ok` | nRF24 answered on SPI at boot |
 
 Any command except power OFF also switches power on (the remote does not transmit while OFF).
 Commands in the first 5 s after an ESP boot are ignored so entity restores cannot move the vent.
@@ -432,17 +444,18 @@ Dashboard card:
 type: entities
 title: Roof Vent
 entities:
-  - switch.roof_vent_power
-  - fan.roof_vent_fan
-  - cover.roof_vent_lid
-  - switch.roof_vent_rain_sensor
-  - button.roof_vent_resend
+  - switch.esphymer2_roof_vent_power
+  - fan.esphymer2_roof_vent_fan
+  - cover.esphymer2_roof_vent_lid
+  - switch.esphymer2_roof_vent_rain_sensor
+  - button.esphymer2_roof_vent_resend
 ```
 
-First test with the vent: watch `esphome logs /config/vent-remote.yaml`; every command logs
+First test with the vent: watch `esphome logs /config/esphymer2.yaml`; every command logs
 `TX <frame>`, which must equal the matching frame in `vent/vent_protocol.py`. If the vent ignores it,
 press Resend, then try `channel_offset: "1"` (the original remote's crystal sits ~+1 MHz high), then
-`tx_rounds: "20"`. To check the transmitter without the vent, run `nrf24-sniffer.yaml` on a second
+`tx_rounds: "20"` (override these package substitutions in `esphymer2.yaml`). To check
+the transmitter without the vent, run `nrf24-sniffer.yaml` on a second
 nRF24 board: it should log `radio CRC OK` with the same frame.
 
 ---

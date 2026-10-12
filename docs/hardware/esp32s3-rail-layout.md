@@ -2,6 +2,12 @@
 
 This plan is based on photos in [hw](../../hw) and the active pin map in [docs/hardware/esp32s3-wiring-guide.md](esp32s3-wiring-guide.md).
 
+The ESP32-C3 Super Mini configured as `esphymer2` reuses the existing nRF24 roof-vent
+controller board and is not part of this ESP32-S3 rail assembly. Its I2C sensors,
+starter battery INA226, engine D+ optocoupler and T2/T3 temperature sensors are wired
+locally to that board; there is no separate `vent-remote` node. See the
+[wiring guide](esp32s3-wiring-guide.md#second-node--esp32-c3-super-mini).
+
 ## 1) Recommended left-to-right order on the rail
 
 1. Input board (8-channel isolation board)

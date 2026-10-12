@@ -1,4 +1,5 @@
-# DS18B20 1-Wire temperature sensors (×3).
+# The single T1 DS18B20 on the ESP32-S3 esphymer node.
+# T2 and T3 are on the separate ESP32-C3 Super Mini in esphymer2.yaml.
 one_wire:
   - platform: gpio
     pin:
@@ -16,20 +17,6 @@ sensor:
     name: "T1"
     unit_of_measurement: "°C"
 
-  # - platform: dallas_temp
-  #   one_wire_id: bus_b
-  #   address: 0xa83c01f095b01928
-  #   id: temp_t2
-  #   name: "T2"
-  #   unit_of_measurement: "°C"
-
-  # - platform: dallas_temp
-  #   one_wire_id: bus_b
-  #   address: 0xdb3c01f0952a3328
-  #   id: temp_t3
-  #   name: "T3"
-  #   unit_of_measurement: "°C"
-
 interval:
   - interval: 15s
     then:
@@ -37,6 +24,3 @@ interval:
           if (id(report_fault)) {
             id(report_fault)("T1", id(temp_t1));
           }
-
-# id(report_fault)("T2", id(temp_t2));
-# id(report_fault)("T3", id(temp_t3));
