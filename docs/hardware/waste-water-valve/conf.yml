@@ -1,0 +1,335 @@
+views:
+  - type: sections
+    sections:
+      - type: grid
+        cards:
+          - type: heading
+            heading: Obývák
+            heading_style: title
+          - type: tile
+            grid_options:
+              columns: 12
+              rows: 1
+            entity: text.termostat_obyvak_schedule_monday
+            name: Pondělí
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_obyvak_schedule_tuesday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Úterý
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_obyvak_schedule_wednesday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Středa
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_obyvak_schedule_thursday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Čtvrtek
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_obyvak_schedule_friday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Pátek
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_obyvak_schedule_saturday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Sobota
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_obyvak_schedule_sunday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Neděle
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+        column_span: 1
+      - type: grid
+        cards:
+          - type: heading
+            heading: Ložnice
+            heading_style: title
+          - type: tile
+            entity: text.termostat_loznice_schedule_monday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Pondělí
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_loznice_schedule_tuesday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Úterý
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_loznice_schedule_wednesday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Středa
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_loznice_schedule_thursday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Čtvrtek
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_loznice_schedule_friday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Pátek
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_loznice_schedule_saturday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Sobota
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_loznice_schedule_sunday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Neděle
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+        column_span: 1
+      - type: grid
+        cards:
+          - type: heading
+            heading: Nela
+            heading_style: title
+          - type: tile
+            entity: text.termostat_nela_schedule_monday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Pondělí
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_nela_schedule_tuesday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Úterý
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_nela_schedule_wednesday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Středa
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_nela_schedule_thursday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Čtvrtek
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_nela_schedule_friday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Pátek
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_nela_schedule_saturday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Sobota
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_nela_schedule_sunday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Neděle
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+        column_span: 1
+      - type: grid
+        cards:
+          - type: heading
+            heading: Oliver
+            heading_style: title
+          - type: tile
+            entity: text.termostat_oliver_schedule_monday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Pondělí
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_oliver_schedule_tuesday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Úterý
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_oliver_schedule_wednesday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Středa
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_oliver_schedule_thursday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Čtvrtek
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_oliver_schedule_friday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Pátek
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_oliver_schedule_saturday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Sobota
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+          - type: tile
+            entity: text.termostat_oliver_schedule_sunday
+            grid_options:
+              columns: 12
+              rows: 1
+            name: Neděle
+            icon: none
+            show_entity_picture: false
+            hide_state: false
+            vertical: false
+            features_position: bottom
+        column_span: 1

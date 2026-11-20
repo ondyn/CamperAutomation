@@ -1,0 +1,23 @@
+# Include under the existing `template:` key; see the valve README.
+# Verify the entity IDs after adding the ESPHome node; Home Assistant may
+# assign a suffix if an ID already exists.
+- cover:
+    - name: Waste Water Valve
+      unique_id: waste_water_valve_control
+      icon: mdi:valve
+      availability: "{{ states('sensor.waste_water_valve_position') not in ['unknown', 'unavailable'] }}"
+      state: >-
+        {% set position = states('sensor.waste_water_valve_position') | lower %}
+        {{ position if position in ['open', 'closed', 'opening', 'closing'] else none }}
+      open_cover:
+        - action: button.press
+          target:
+            entity_id: button.waste_water_valve_open
+      close_cover:
+        - action: button.press
+          target:
+            entity_id: button.waste_water_valve_close
+      stop_cover:
+        - action: button.press
+          target:
+            entity_id: button.waste_water_valve_stop

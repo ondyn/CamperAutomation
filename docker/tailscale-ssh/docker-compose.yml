@@ -1,6 +1,7 @@
 services:
   tailscale:
     image: tailscale/tailscale:stable
+    restart: "no"
     container_name: tailscale-ssh
     hostname: ${TS_HOSTNAME:-camper-mac-ssh}
     env_file:
@@ -25,6 +26,7 @@ services:
 
   ssh-client:
     image: alpine:3.20
+    restart: "no"
     container_name: tailscale-ssh-client
     env_file:
       - ../../.env
@@ -48,7 +50,7 @@ services:
     depends_on:
       - tailscale
     network_mode: service:tailscale
-    restart: unless-stopped
+    restart: "no"
     command:
       - /bin/sh
       - -lc

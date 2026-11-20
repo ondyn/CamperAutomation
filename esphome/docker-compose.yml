@@ -16,6 +16,7 @@ services:
     # image: ghcr.io/esphome/esphome:2026.5.1
     # havanti/esphome-truma (peripherals/truma.yaml) requires ESPHome >= 2026.8.1
     image: ghcr.io/esphome/esphome:2026.8.1
+    restart: "no"
     # fix-espidf.sh patches a duplicate-source-file bug in ESP-IDF 5.5.4 that
     # causes "Multiple ways to build the same target" errors.  It is idempotent
     # and hands off to the real /entrypoint.sh when done.

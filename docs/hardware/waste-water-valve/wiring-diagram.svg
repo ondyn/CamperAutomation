@@ -1,0 +1,211 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1320 900" width="1320" height="900" font-family="Helvetica, Arial, sans-serif" font-size="14">
+  <defs>
+    <g id="gnd">
+      <line x1="0" y1="0" x2="0" y2="10" stroke="#333" stroke-width="2"/>
+      <line x1="-10" y1="10" x2="10" y2="10" stroke="#333" stroke-width="2"/>
+      <line x1="-6" y1="14" x2="6" y2="14" stroke="#333" stroke-width="2"/>
+      <line x1="-2" y1="18" x2="2" y2="18" stroke="#333" stroke-width="2"/>
+    </g>
+  </defs>
+  <rect width="1320" height="900" fill="#ffffff"/>
+  <text x="20" y="32" font-size="22" font-weight="bold">Waste-water valve: 12 V supply + MKS TMC2209 V2.0 + ESP32-C3 Super Mini + NEMA 17</text>
+  <text x="20" y="56" fill="#555">Driver is drawn from its labelled (pin-name) side, as in the photo. All ⏚ symbols are one common ground. Wire colours are only for readability.</text>
+
+  <g fill="none" stroke-width="3" stroke-linejoin="round">
+    <!-- 3V3 -> VDD (over the top of the driver) -->
+    <path d="M980 105 H420 V215 H485" stroke="#c000c0"/>
+    <!-- DIR / STEP -->
+    <path d="M675 160 H980" stroke="#1f6fd1"/>
+    <path d="M675 215 H980" stroke="#18a0b8"/>
+    <!-- UART: TX through 1k, RX direct, joined at PDN/UART -->
+    <path d="M980 300 H905" stroke="#1a9a3a"/>
+    <path d="M855 300 H820 V345 H980" stroke="#1a9a3a"/>
+    <path d="M675 325 H820" stroke="#1a9a3a"/>
+    <!-- MS1 / MS2 to GND -->
+    <path d="M675 435 H730 V500" stroke="#333"/>
+    <path d="M675 490 H730" stroke="#333"/>
+    <!-- EN: GPIO3 -> STOP (NC) -> EN, GPIO7 senses driver side -->
+    <path d="M980 545 H905" stroke="#a0522d"/>
+    <path d="M855 545 H675" stroke="#a0522d"/>
+    <path d="M980 470 H790 V545" stroke="#d2691e" stroke-dasharray="none"/>
+    <!-- DIAG (bottom pad) -> GPIO6 -->
+    <path d="M590 580 V630 H980" stroke="#7b2cbf"/>
+    <!-- ESP GND -->
+    <path d="M980 680 H940 V690" stroke="#333"/>
+    <!-- Motor coils -->
+    <path d="M485 270 H305" stroke="#d4a017"/>
+    <path d="M485 325 H305" stroke="#d4a017"/>
+    <path d="M485 380 H305" stroke="#0f8f8f"/>
+    <path d="M485 435 H305" stroke="#0f8f8f"/>
+    <!-- Driver GND pins -->
+    <path d="M485 160 H455 V175" stroke="#333"/>
+    <path d="M485 490 H455 V505" stroke="#333"/>
+    <!-- 12 V protected rail -> VM, capacitors, buck -->
+    <path d="M485 545 H330" stroke="#d62828"/>
+    <path d="M420 545 V570" stroke="#d62828"/>
+    <path d="M380 545 V570" stroke="#d62828"/>
+    <path d="M350 545 V780 H430" stroke="#d62828"/>
+    <path d="M200 545 H160" stroke="#d62828"/>
+    <path d="M110 545 H80" stroke="#d62828"/>
+    <!-- 5 V buck -> ESP 5V -->
+    <path d="M590 780 H900 V725 H980" stroke="#f08c00"/>
+  </g>
+
+  <!-- junction dots -->
+  <g fill="#000">
+    <circle cx="820" cy="325" r="5"/>
+    <circle cx="790" cy="545" r="5"/>
+    <circle cx="420" cy="545" r="5"/>
+    <circle cx="380" cy="545" r="5"/>
+    <circle cx="350" cy="545" r="5"/>
+    <circle cx="730" cy="490" r="5"/>
+  </g>
+
+  <!-- ===== MKS TMC2209 V2.0 ===== -->
+  <rect x="460" y="120" width="240" height="480" rx="8" fill="#1d1d1d"/>
+  <text x="580" y="236" text-anchor="middle" font-weight="bold" fill="#fff" font-size="12">MKS TMC2209 V2.0</text>
+  <rect x="545" y="245" width="70" height="70" fill="#333" stroke="#777"/>
+  <text x="580" y="284" text-anchor="middle" fill="#ccc" font-size="11">TMC2209</text>
+  <circle cx="520" cy="572" r="14" fill="#999"/>
+    <g fill="#c8c8c8" stroke="#fff" stroke-width="1">
+    <rect x="477" y="537" width="16" height="16"/>
+    <circle cx="485" cy="490" r="8"/><circle cx="485" cy="435" r="8"/><circle cx="485" cy="380" r="8"/>
+    <circle cx="485" cy="325" r="8"/><circle cx="485" cy="270" r="8"/><circle cx="485" cy="215" r="8"/>
+    <circle cx="485" cy="160" r="8"/>
+    <circle cx="675" cy="160" r="8"/><circle cx="675" cy="215" r="8"/><circle cx="675" cy="270" r="8"/>
+    <circle cx="675" cy="325" r="8"/><circle cx="675" cy="380" r="8"/><circle cx="675" cy="435" r="8"/>
+    <circle cx="675" cy="490" r="8"/><circle cx="675" cy="545" r="8"/>
+    <circle cx="590" cy="580" r="7"/><circle cx="620" cy="560" r="7"/><circle cx="650" cy="580" r="7"/>
+  </g>
+  <g fill="#fff" font-size="13" font-weight="bold">
+    <text x="500" y="165">GND</text>
+    <text x="500" y="220">VDD</text>
+    <text x="500" y="275">1B</text>
+    <text x="500" y="330">1A</text>
+    <text x="500" y="385">2A</text>
+    <text x="500" y="440">2B</text>
+    <text x="500" y="495">GND</text>
+    <text x="500" y="550">VM</text>
+    <text x="660" y="165" text-anchor="end">DIR</text>
+    <text x="660" y="220" text-anchor="end">STEP</text>
+    <text x="660" y="275" text-anchor="end">NC</text>
+    <text x="660" y="330" text-anchor="end">UART</text>
+    <text x="660" y="385" text-anchor="end">(R8)</text>
+    <text x="660" y="440" text-anchor="end">MS2</text>
+    <text x="660" y="495" text-anchor="end">MS1</text>
+    <text x="660" y="550" text-anchor="end">EN</text>
+  </g>
+  <g fill="#fff" font-size="10">
+    <text x="590" y="566" text-anchor="middle">DIAG</text>
+    <text x="620" y="546" text-anchor="middle">INDEX</text>
+    <text x="650" y="566" text-anchor="middle">VREF</text>
+  </g>
+  <text x="600" y="650" font-size="11" fill="#7b2cbf">DIAG = bottom-edge pad, 3rd from the EN corner</text>
+
+  <!-- not-connected markers -->
+  <g fill="#777" font-size="12">
+    <text x="708" y="275">n.c.</text>
+    <text x="708" y="390">n.c. (UART only via R8)</text>
+  </g>
+  <use href="#gnd" x="730" y="500"/>
+  <text x="745" y="412" font-size="12" fill="#333">MS1+MS2 = GND</text>
+  <text x="745" y="427" font-size="12" fill="#333">(UART address 0)</text>
+  <use href="#gnd" x="455" y="175"/>
+  <use href="#gnd" x="455" y="505"/>
+
+  <!-- 1k resistor (TX) -->
+  <rect x="855" y="290" width="50" height="20" fill="#fff" stroke="#1a9a3a" stroke-width="2"/>
+  <text x="880" y="305" text-anchor="middle" font-size="12">1 kΩ</text>
+  <text x="840" y="282" font-size="12" fill="#1a9a3a">TX through 1 kΩ</text>
+  <text x="840" y="362" font-size="12" fill="#1a9a3a">RX direct</text>
+
+  <!-- STOP switch (normally closed) -->
+  <circle cx="860" cy="545" r="5" fill="#fff" stroke="#a0522d" stroke-width="2"/>
+  <circle cx="900" cy="545" r="5" fill="#fff" stroke="#a0522d" stroke-width="2"/>
+  <line x1="858" y1="551" x2="902" y2="551" stroke="#a0522d" stroke-width="3"/>
+  <line x1="880" y1="551" x2="880" y2="568" stroke="#a0522d" stroke-width="2" stroke-dasharray="3 3"/>
+  <text x="880" y="584" text-anchor="middle" font-size="12" fill="#a0522d">STOP switch, normally closed</text>
+  <text x="800" y="530" font-size="12" fill="#d2691e">EN feedback</text>
+
+  <!-- ===== ESP32-C3 Super Mini ===== -->
+  <rect x="980" y="80" width="200" height="670" rx="8" fill="#0b3d91"/>
+  <rect x="1055" y="62" width="50" height="22" rx="4" fill="#aaa"/>
+  <text x="1080" y="78" text-anchor="middle" font-size="11">USB-C</text>
+  <text x="1080" y="772" text-anchor="middle" font-weight="bold">ESP32-C3 Super Mini</text>
+  <g fill="#e0c060">
+    <circle cx="980" cy="105" r="7"/><circle cx="980" cy="160" r="7"/><circle cx="980" cy="215" r="7"/>
+    <circle cx="980" cy="300" r="7"/><circle cx="980" cy="345" r="7"/><circle cx="980" cy="470" r="7"/>
+    <circle cx="980" cy="545" r="7"/><circle cx="980" cy="630" r="7"/><circle cx="980" cy="680" r="7"/>
+    <circle cx="980" cy="725" r="7"/>
+  </g>
+  <g fill="#fff" font-size="13">
+    <text x="995" y="110"><tspan font-weight="bold">3V3</tspan>  → driver logic</text>
+    <text x="995" y="165"><tspan font-weight="bold">GPIO1</tspan>  DIR</text>
+    <text x="995" y="220"><tspan font-weight="bold">GPIO0</tspan>  STEP</text>
+    <text x="995" y="305"><tspan font-weight="bold">GPIO4</tspan>  UART TX</text>
+    <text x="995" y="350"><tspan font-weight="bold">GPIO5</tspan>  UART RX</text>
+    <text x="995" y="475"><tspan font-weight="bold">GPIO7</tspan>  EN feedback</text>
+    <text x="995" y="550"><tspan font-weight="bold">GPIO3</tspan>  EN command</text>
+    <text x="995" y="635"><tspan font-weight="bold">GPIO6</tspan>  DIAG in</text>
+    <text x="995" y="685"><tspan font-weight="bold">GND</tspan></text>
+    <text x="995" y="730"><tspan font-weight="bold">5V</tspan>  ← buck</text>
+  </g>
+  <use href="#gnd" x="940" y="690"/>
+  <text x="990" y="792" font-size="11" fill="#555">Pins are shown in wiring order, not physical order.</text>
+
+  <!-- ===== NEMA 17 ===== -->
+  <rect x="150" y="230" width="155" height="240" rx="10" fill="#e9e9e9" stroke="#555" stroke-width="2"/>
+  <text x="228" y="220" text-anchor="middle" font-weight="bold">NEMA 17 (4 wires)</text>
+  <path d="M305 270 h-35 a8 8 0 0 1 0 14 a8 8 0 0 1 0 14 a8 8 0 0 1 0 14 a8 8 0 0 1 0 13 h35" fill="none" stroke="#d4a017" stroke-width="3"/>
+  <path d="M305 380 h-35 a8 8 0 0 1 0 14 a8 8 0 0 1 0 14 a8 8 0 0 1 0 14 a8 8 0 0 1 0 13 h35" fill="none" stroke="#0f8f8f" stroke-width="3"/>
+  <text x="165" y="302" font-size="13">coil pair 1</text>
+  <text x="165" y="412" font-size="13">coil pair 2</text>
+  <text x="165" y="455" font-size="11" fill="#555">find pairs with an ohmmeter</text>
+  <circle cx="305" cy="270" r="5"/><circle cx="305" cy="325" r="5"/>
+  <circle cx="305" cy="380" r="5"/><circle cx="305" cy="435" r="5"/>
+
+  <!-- ===== 12 V supply chain ===== -->
+  <rect x="20" y="520" width="60" height="50" rx="4" fill="#fbe3e3" stroke="#d62828" stroke-width="2"/>
+  <text x="50" y="541" text-anchor="middle" font-size="12" font-weight="bold">12–14 V</text>
+  <text x="50" y="558" text-anchor="middle" font-size="11">battery +</text>
+  <line x1="50" y1="570" x2="50" y2="600" stroke="#333" stroke-width="3"/>
+  <use href="#gnd" x="50" y="600"/>
+  <text x="58" y="595" font-size="11">−</text>
+  <rect x="110" y="533" width="50" height="24" fill="#fff" stroke="#d62828" stroke-width="2"/>
+  <text x="135" y="550" text-anchor="middle" font-size="12">F1 fuse</text>
+  <rect x="200" y="505" width="130" height="80" rx="4" fill="#fff5f5" stroke="#d62828" stroke-width="2"/>
+  <text x="265" y="527" text-anchor="middle" font-size="12" font-weight="bold">Automotive input</text>
+  <text x="265" y="543" text-anchor="middle" font-size="11">protection: reverse-</text>
+  <text x="265" y="557" text-anchor="middle" font-size="11">polarity, surge/TVS,</text>
+  <text x="265" y="571" text-anchor="middle" font-size="11">filter (≤ 28 V out)</text>
+  <use href="#gnd" x="265" y="585"/>
+  <!-- bulk capacitors at VM -->
+  <g stroke="#333" stroke-width="3">
+    <line x1="408" y1="570" x2="432" y2="570"/><line x1="408" y1="578" x2="432" y2="578"/>
+    <line x1="368" y1="570" x2="392" y2="570"/><line x1="368" y1="578" x2="392" y2="578"/>
+    <line x1="420" y1="578" x2="420" y2="590"/><line x1="380" y1="578" x2="380" y2="590"/>
+  </g>
+  <use href="#gnd" x="420" y="590"/>
+  <use href="#gnd" x="380" y="590"/>
+  <text x="365" y="650" font-size="11">100 µF ≥35 V  +  100 nF, close to VM</text>
+  <text x="365" y="535" font-size="12" fill="#d62828">protected 12 V</text>
+  <!-- 5 V buck -->
+  <rect x="430" y="750" width="160" height="60" rx="4" fill="#fff4e0" stroke="#f08c00" stroke-width="2"/>
+  <text x="510" y="775" text-anchor="middle" font-size="13" font-weight="bold">12 V → 5 V buck</text>
+  <text x="510" y="795" text-anchor="middle" font-size="11">automotive input range</text>
+  <use href="#gnd" x="510" y="810"/>
+
+  <!-- ===== legend ===== -->
+  <g font-size="12">
+    <rect x="20" y="660" width="310" height="200" rx="6" fill="#fafafa" stroke="#bbb"/>
+    <text x="35" y="682" font-weight="bold">Legend</text>
+    <line x1="35" y1="700" x2="70" y2="700" stroke="#d62828" stroke-width="3"/><text x="80" y="704">protected 12 V motor supply (VM)</text>
+    <line x1="35" y1="720" x2="70" y2="720" stroke="#f08c00" stroke-width="3"/><text x="80" y="724">5 V for the ESP only</text>
+    <line x1="35" y1="740" x2="70" y2="740" stroke="#c000c0" stroke-width="3"/><text x="80" y="744">3.3 V logic (never 5 V on VDD)</text>
+    <line x1="35" y1="760" x2="70" y2="760" stroke="#1f6fd1" stroke-width="3"/><text x="80" y="764">STEP / DIR</text>
+    <line x1="35" y1="780" x2="70" y2="780" stroke="#1a9a3a" stroke-width="3"/><text x="80" y="784">single-wire UART</text>
+    <line x1="35" y1="800" x2="70" y2="800" stroke="#a0522d" stroke-width="3"/><text x="80" y="804">EN (HIGH = motor off)</text>
+    <line x1="35" y1="820" x2="70" y2="820" stroke="#7b2cbf" stroke-width="3"/><text x="80" y="824">DIAG stall signal</text>
+    <circle cx="52" cy="842" r="5"/><text x="80" y="846">joined wires (no dot = crossing only)</text>
+  </g>
+</svg>

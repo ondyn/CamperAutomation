@@ -20,6 +20,10 @@ This folder contains operational and implementation documentation for the camper
 - `architecture/charger-integration-plan.md`: plan for integrating charger monitor data into Home Assistant.
 - `architecture/vent-rf-integration.md`: roof-vent RF test history, 868 MHz discovery procedure, and ESPHome/HA integration options.
 
+## Hardware
+
+- [Waste-water valve controller](hardware/waste-water-valve/README.md): ESP32-C3, TMC2209, wiring and commissioning.
+
 ## Status Snapshots
 
 - `status/provisioning-status-2026-05-06.md`: provisioning pipeline status update.
